@@ -4,6 +4,23 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.127`
+
+### Changed
+
+**Window tabs**
+
+- Horizontal tabs use a smaller name capsule with clearer spacing and readable
+  labels in light and dark themes, without increasing titlebar height. Close
+  controls appear beside the name on hover without shifting the text; long
+  names use the available space and remain visible in tooltips. _(PR
+  [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
+  [@wey-gu](https://github.com/wey-gu))_
+- Titlebar panel buttons use quiet neutral fills to show which panels are open,
+  with more consistent icons and hover feedback. _(PR
+  [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
+  [@wey-gu](https://github.com/wey-gu))_
+
 ## `v0.1.0-beta.126` - 2026-10-11
 
 ### Changed
