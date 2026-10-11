@@ -46,8 +46,9 @@ Only the selected capsule has a neutral fill, composited from the titlebar base
 and theme foreground before painting with near-opaque coverage. This keeps its
 lightness distinct from translucent chrome, including over a dark desktop.
 It has a medium-weight title. Other capsules have no neutral fill. Hover adds
-a restrained fill to the larger hit target, revealing exactly which tab will
-activate, without competing with the selected capsule. Labels use solid,
+a restrained fill only to the name capsule, never a rectangular outer frame
+around the capsule and its identity icon. Capsule corner radii are half their
+height, including while hovered. Labels use solid,
 theme-derived ink at normal weight. Selection must not depend on making
 unselected titles hard to read.
 

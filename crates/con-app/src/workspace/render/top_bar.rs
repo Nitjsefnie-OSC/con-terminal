@@ -51,7 +51,7 @@ fn tab_name_capsule(background: Hsla, hover_background: Hsla) -> gpui::Div {
         .items_center()
         .px(px(11.0))
         .h(px(TOP_BAR_TAB_HEIGHT - 4.0))
-        .rounded_full()
+        .rounded(px((TOP_BAR_TAB_HEIGHT - 4.0) * 0.5))
         .bg(background)
         .group_hover("tab", move |s| s.bg(hover_background))
 }
@@ -874,12 +874,6 @@ impl ConWorkspace {
                     .id(ElementId::Name(format!("tab-{}", index).into()))
                     .group("tab")
                     .text_size(ui_px(theme, 12.0))
-                    .rounded(px(5.0))
-                    .hover(|s| {
-                        s.bg(theme
-                            .foreground
-                            .opacity(if theme.is_dark() { 0.045 } else { 0.035 }))
-                    })
                     .cursor_pointer()
                     // Windows: without `.occlude()` the parent top_bar's
                     // `WindowControlArea::Drag` hit-test routes the click
@@ -1058,7 +1052,11 @@ impl ConWorkspace {
                                 cx,
                             )
                         })
-                        .unwrap_or(theme.foreground.opacity(0.0));
+                        .unwrap_or(theme.foreground.opacity(if theme.is_dark() {
+                            0.07
+                        } else {
+                            0.05
+                        }));
                     (inactive_bg, inactive_hover_bg)
                 };
 
