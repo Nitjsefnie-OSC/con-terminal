@@ -1,7 +1,7 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use raw_window_handle::RawWindowHandle;
 use x11rb::connection::Connection;
 use x11rb::protocol::xproto::{AtomEnum, ConnectionExt, PropMode};
 use x11rb::wrapper::ConnectionExt as _;
@@ -29,7 +29,7 @@ pub(super) fn refresh_launcher_cache(path: &std::path::Path) {
 }
 
 pub(super) fn apply(window: &gpui::Window, id: &str) -> anyhow::Result<()> {
-    let xid = match HasWindowHandle::window_handle(window)?.as_raw() {
+    let xid = match super::native_handle::get(window)? {
         RawWindowHandle::Xlib(handle) => u32::try_from(handle.window)?,
         RawWindowHandle::Xcb(handle) => handle.window.get(),
         // Wayland identifies apps through their desktop file. Do not open an

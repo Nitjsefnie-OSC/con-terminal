@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use image::ImageEncoder;
-use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+use raw_window_handle::RawWindowHandle;
 use windows::Win32::Foundation::{HWND, LPARAM, WPARAM};
 use windows::Win32::UI::WindowsAndMessaging::{
     CreateIconFromResourceEx, DestroyIcon, HICON, ICON_BIG, ICON_SMALL, IMAGE_FLAGS, SendMessageW,
@@ -49,7 +49,7 @@ fn create(image: &image::RgbaImage, size: u32) -> anyhow::Result<Icon> {
 }
 
 pub(super) fn apply(window: &gpui::Window, id: &str) -> anyhow::Result<()> {
-    let RawWindowHandle::Win32(handle) = HasWindowHandle::window_handle(window)?.as_raw() else {
+    let RawWindowHandle::Win32(handle) = super::native_handle::get(window)? else {
         return Ok(());
     };
     let hwnd = HWND(handle.hwnd.get() as *mut std::ffi::c_void);

@@ -269,6 +269,10 @@ fn window_icon_image(id: &str) -> anyhow::Result<image::RgbaImage> {
 #[path = "app_icon/windows.rs"]
 mod native;
 
+#[cfg(any(target_os = "windows", target_os = "linux", test))]
+#[path = "app_icon/native_handle.rs"]
+mod native_handle;
+
 #[cfg(target_os = "linux")]
 #[path = "app_icon/linux.rs"]
 mod native;
