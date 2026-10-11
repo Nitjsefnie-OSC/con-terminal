@@ -20,6 +20,11 @@ con is still pre-release, so entries may group related beta work while the produ
   with more consistent icons and hover feedback. _(PR
   [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
   [@wey-gu](https://github.com/wey-gu))_
+- The bottom input bar has quieter mode controls, clearer pane-target labels,
+  and a compact circular send button that stands out when input is ready.
+  Its height, mode-switch shortcuts, and input behavior stay unchanged. _(PR
+  [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
+  [@wey-gu](https://github.com/wey-gu))_
 
 ## `v0.1.0-beta.126` - 2026-10-11
 

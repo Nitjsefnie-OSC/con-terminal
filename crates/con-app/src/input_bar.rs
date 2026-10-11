@@ -1251,9 +1251,9 @@ impl Render for InputBar {
         let mode_prefix = Button::new("mode-toggle")
             .custom(
                 ButtonCustomVariant::new(cx)
-                    .color(mode_tint.opacity(0.06))
-                    .hover(mode_tint.opacity(0.12))
-                    .active(mode_tint.opacity(0.16)),
+                    .color(theme.foreground.opacity(0.035))
+                    .hover(theme.foreground.opacity(0.09))
+                    .active(theme.foreground.opacity(0.14)),
             )
             .accessibility_label(format!("{}; switch mode", self.mode.tooltip()))
             .tooltip_with_action(self.mode.tooltip(), &crate::CycleInputMode, None)
@@ -1264,7 +1264,7 @@ impl Render for InputBar {
             .h(control_size)
             .p_0()
             .cursor_pointer()
-            .rounded(px(8.0 * mono_scale))
+            .rounded(px(6.0 * mono_scale))
             .on_click(cx.listener(|this, _, window, cx| {
                 this.cycle_mode(window, cx);
                 this.current_input_state()
@@ -1284,61 +1284,60 @@ impl Render for InputBar {
             let scope_is_expanded =
                 all_selected || matches!(self.pane_scope_mode, PaneScopeMode::Custom);
             let scope_tint = if scope_is_expanded {
-                theme.primary.opacity(0.86)
+                theme.primary
             } else {
-                theme.muted_foreground.opacity(0.78)
+                theme.foreground.blend(theme.background.opacity(0.28))
             };
             Some(
                 div()
                     .flex()
                     .items_center()
                     .child(
-                        div()
-                            .id("pane-scope")
+                        Button::new("pane-scope")
+                            .custom(
+                                ButtonCustomVariant::new(cx)
+                                    .color(theme.foreground.opacity(0.045))
+                                    .hover(theme.foreground.opacity(0.09))
+                                    .active(theme.foreground.opacity(0.14)),
+                            )
+                            .accessibility_label("Choose target panes")
+                            .tooltip_with_action(
+                                format!("Target panes: {scope_label}"),
+                                &crate::TogglePaneScopePicker,
+                                None,
+                            )
+                            .debug_selector(|| "command-pane-scope".into())
+                            .tab_stop(false)
+                            .size(control_size)
+                            .w(px(96.0 * mono_scale))
                             .h(control_size)
-                            .px(px(11.0 * mono_scale))
-                            .rounded(px(8.0 * mono_scale))
+                            .px(px(9.0 * mono_scale))
+                            .rounded(px(6.0 * mono_scale))
                             .cursor_pointer()
                             .flex()
                             .items_center()
-                            .gap(px(8.0 * mono_scale))
-                            .bg(if scope_is_expanded {
-                                theme.primary.opacity(0.050)
-                            } else {
-                                theme.foreground.opacity(0.045)
-                            })
-                            .hover(|s| {
-                                s.bg(if scope_is_expanded {
-                                    theme.primary.opacity(0.082)
-                                } else {
-                                    theme.foreground.opacity(0.065)
-                                })
-                            })
-                            .on_mouse_down(
-                                MouseButton::Left,
-                                cx.listener(|this, _: &MouseDownEvent, window, cx| {
-                                    cx.emit(TogglePaneScopePicker);
-                                    this.current_input_state()
-                                        .update(cx, |state, cx| state.focus(window, cx));
-                                }),
-                            )
+                            .gap(px(6.0 * mono_scale))
+                            .bg(theme.foreground.opacity(0.045))
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                cx.emit(TogglePaneScopePicker);
+                                this.current_input_state()
+                                    .update(cx, |state, cx| state.focus(window, cx));
+                            }))
                             .child(
                                 svg()
+                                    .debug_selector(|| "command-pane-scope-icon".into())
                                     .path(scope_icon)
                                     .size(compact_icon_size)
                                     .text_color(scope_tint),
                             )
                             .child(
                                 div()
+                                    .debug_selector(|| "command-pane-scope-label".into())
                                     .text_size(mono_px(theme, 11.0))
                                     .line_height(mono_px(theme, 14.0))
-                                    .font_family(theme.mono_font_family.clone())
+                                    .font_family(theme.font_family.clone())
                                     .font_weight(FontWeight::MEDIUM)
-                                    .text_color(if scope_is_expanded {
-                                        theme.primary.opacity(0.92)
-                                    } else {
-                                        theme.muted_foreground.opacity(0.76)
-                                    })
+                                    .text_color(scope_tint)
                                     .max_w(px(128.0 * mono_scale))
                                     .overflow_hidden()
                                     .whitespace_nowrap()
@@ -1353,26 +1352,22 @@ impl Render for InputBar {
         };
 
         // ── Send button — inside container, right edge ──
-        let submit_tint = match self.mode {
-            InputMode::Smart => theme.foreground,
-            InputMode::Shell => theme.success,
-            InputMode::Agent => theme.primary,
+        let submit_fill = if has_text {
+            theme.foreground
+        } else {
+            theme.foreground.opacity(0.045)
         };
         let send_button = Button::new("send-button")
             .custom(
                 ButtonCustomVariant::new(cx)
-                    .color(if has_text {
-                        submit_tint.opacity(0.14)
-                    } else {
-                        theme.foreground.opacity(0.045)
-                    })
+                    .color(submit_fill)
                     .hover(if has_text {
-                        submit_tint.opacity(0.22)
+                        theme.foreground.opacity(0.88)
                     } else {
                         theme.foreground.opacity(0.06)
                     })
                     .active(if has_text {
-                        submit_tint.opacity(0.28)
+                        theme.foreground.opacity(0.76)
                     } else {
                         theme.foreground.opacity(0.08)
                     }),
@@ -1391,7 +1386,8 @@ impl Render for InputBar {
             .h(control_size)
             .p_0()
             .cursor_pointer()
-            .rounded(px(8.0 * mono_scale))
+            .rounded_full()
+            .bg(submit_fill)
             .on_click(cx.listener(|this, _, window, cx| {
                 cx.emit(SubmitInput);
                 this.current_input_state()
@@ -1402,9 +1398,9 @@ impl Render for InputBar {
                     .path("phosphor/arrow-up.svg")
                     .size(mono_space_px(theme, 16.0))
                     .text_color(if has_text {
-                        submit_tint.opacity(0.92)
+                        theme.background
                     } else {
-                        theme.muted_foreground.opacity(0.8)
+                        theme.foreground.blend(theme.background.opacity(0.45))
                     }),
             );
 
@@ -1823,16 +1819,33 @@ mod tests {
         con_core::release_channel::init();
         cx.update(gpui_component::init);
         let mut mode_row_top = [None, None];
-        for mode in [
+        for (mode, pane_count) in [
             super::InputMode::Smart,
             super::InputMode::Shell,
             super::InputMode::Agent,
-        ] {
+        ]
+        .into_iter()
+        .flat_map(|mode| [1, 2].map(|pane_count| (mode, pane_count)))
+        {
             for (cache_index, cached) in [false, true].into_iter().enumerate() {
                 let (_, view) = cx.add_window_view(|window, cx| {
                     let bar = cx.new(|cx| {
                         let mut bar = InputBar::new(window, cx);
                         bar.set_mode(mode, window, cx);
+                        bar.set_panes(
+                            (1..=pane_count)
+                                .map(|id| super::PaneInfo {
+                                    id,
+                                    name: format!("Pane {id}"),
+                                    hostname: None,
+                                    is_busy: false,
+                                    is_alive: true,
+                                })
+                                .collect(),
+                            1,
+                            window,
+                            cx,
+                        );
                         bar
                     });
                     Host { bar, cached }
@@ -1864,6 +1877,24 @@ mod tests {
                     );
                     assert!(input.right() <= send.left(), "input overlaps send button");
                     assert!(send.right() <= px(width), "send button outside viewport");
+                    if pane_count > 1 && mode != super::InputMode::Agent {
+                        let scope = view
+                            .debug_bounds("command-pane-scope")
+                            .expect("pane scope control");
+                        assert!(mode_toggle.right() <= scope.left());
+                        assert!(scope.right() <= input.left());
+                        assert_eq!(scope.size.height, send.size.height);
+                        let icon = view
+                            .debug_bounds("command-pane-scope-icon")
+                            .expect("scope icon participates in painting");
+                        let label = view
+                            .debug_bounds("command-pane-scope-label")
+                            .expect("scope label participates in painting");
+                        assert!(icon.size.width > px(0.0));
+                        assert!(label.size.width > px(0.0));
+                        assert!(icon.left() >= scope.left());
+                        assert!(label.right() <= scope.right());
+                    }
                 }
             }
         }

@@ -497,3 +497,21 @@ Used for context, categories, entities, filters.
 - Metadata row: 11px, very muted
 - Tags inline below description
 - Right-aligned actions (ratings, timestamps)
+
+## Command Bar Controls
+
+The bottom input bar retains its 44-point minimum height and shared density
+scaling. Mode, pane scope, and submission controls align on the same 28-point
+row. Input typography, multiline growth, completion overlays, and panel motion
+are independent of control styling.
+
+Use quiet neutral fills for the mode and pane-target controls. Mode icons keep
+their semantic color; pane-target labels use the UI font and solid theme-derived
+ink rather than translucent glyphs. Both controls use component buttons and
+restore input focus after activation. Pane scope uses a bounded 96-point width
+at default density; long names truncate, with the full label and shortcut in
+the tooltip. Test its content bounds as well as the outer button's bounds.
+
+The circular submit control is the primary action: a neutral foreground fill
+with an inverse icon when input is ready, and a quiet disabled fill when empty.
+Changing modes must not move the text or change the submission hit target.
