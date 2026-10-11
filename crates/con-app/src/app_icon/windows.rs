@@ -49,7 +49,7 @@ fn create(image: &image::RgbaImage, size: u32) -> anyhow::Result<Icon> {
 }
 
 pub(super) fn apply(window: &gpui::Window, id: &str) -> anyhow::Result<()> {
-    let RawWindowHandle::Win32(handle) = window.window_handle()?.as_raw() else {
+    let RawWindowHandle::Win32(handle) = HasWindowHandle::window_handle(window)?.as_raw() else {
         return Ok(());
     };
     let hwnd = HWND(handle.hwnd.get() as *mut std::ffi::c_void);

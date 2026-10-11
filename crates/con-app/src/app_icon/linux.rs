@@ -29,7 +29,7 @@ pub(super) fn refresh_launcher_cache(path: &std::path::Path) {
 }
 
 pub(super) fn apply(window: &gpui::Window, id: &str) -> anyhow::Result<()> {
-    let xid = match window.window_handle()?.as_raw() {
+    let xid = match HasWindowHandle::window_handle(window)?.as_raw() {
         RawWindowHandle::Xlib(handle) => u32::try_from(handle.window)?,
         RawWindowHandle::Xcb(handle) => handle.window.get(),
         // Wayland identifies apps through their desktop file. Do not open an
