@@ -92,6 +92,10 @@ con is light-first (Flexoki Light default) but must excel in both themes.
 - On transparent tab chrome, use solid foreground/muted foreground theme tokens
   for readable titles and identity icons. Do not further fade those glyphs with
   alpha; retain translucency on the surface instead.
+- Horizontal tabs use a small name capsule rather than a filled outer frame.
+  Keep identity icons outside the capsule and reveal close in the same leading
+  slot on hover, without shifting the title. See
+  `docs/design/compact-tab-strip.md` for geometry and interaction constraints.
 - Apply the same rule throughout sidebar navigation, file trees and search,
   including disclosure arrows, secondary paths and result line numbers.
 - The titlebar, left sidebar, agent sidebar, and bottom input bar share one
@@ -106,10 +110,12 @@ con is light-first (Flexoki Light default) but must excel in both themes.
 - Show each tab once: expanded vertical tabs live in the labeled list; compact
   tabs live in the icon rail. Keep the rail's section controls available in
   either state, and retain compact tab navigation beside Files/Search panels.
-- Title-bar action buttons share a 22px square, 5px rounding and centered
+- Title-bar action buttons share a 22px square, 6px rounding and centered
   vertical placement within the current title-bar height. Use component Button
-  controls; neutral translucent fills distinguish idle, hover and press, while
-  accent-colored icons indicate an open panel. Pointer activation must not
+  controls; neutral translucent fills distinguish open, hover and press states.
+  Open panels use solid foreground icons over a persistent neutral fill;
+  closed panels use quiet solid ink rather than accent-colored state markers.
+  Pointer activation must not
   steal terminal focus or bubble into native title-bar dragging. Keep native
   Windows/Linux caption buttons separate from this action row.
 - **No shadows** - Use opacity-based fills for elevation

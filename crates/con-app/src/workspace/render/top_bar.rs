@@ -1,9 +1,131 @@
 use super::super::*;
+use crate::ui_scale::ui_px;
 use gpui_component::button::{Button, ButtonCustomVariant, ButtonVariants};
 use gpui_component::menu::ContextMenuExt;
 use gpui_component::tooltip::Tooltip;
 
 const CHROME_CONTROL_SIZE: f32 = 22.0;
+const TAB_STRIP_INSET: f32 = (TOP_BAR_TABS_HEIGHT - TOP_BAR_TAB_HEIGHT) * 0.5;
+const HORIZONTAL_TAB_MAX_WIDTH: f32 = 220.0;
+const TAB_CLOSE_SIZE: f32 = 20.0;
+
+fn horizontal_tab_target() -> gpui::Div {
+    div()
+        .relative()
+        .flex()
+        .flex_initial()
+        .min_w_0()
+        .max_w(px(HORIZONTAL_TAB_MAX_WIDTH))
+        .items_center()
+        .px(px(2.0))
+        .h(px(TOP_BAR_TAB_HEIGHT))
+}
+
+fn tab_identity_row() -> gpui::Div {
+    div()
+        .flex()
+        .items_center()
+        .gap(px(6.0))
+        .pl(px(6.0))
+        .pr(px(6.0))
+        .h_full()
+        .min_w_0()
+}
+
+fn tab_identity_icon_slot() -> gpui::Div {
+    div()
+        .relative()
+        .flex()
+        .items_center()
+        .justify_center()
+        .w(px(TAB_CLOSE_SIZE))
+        .h_full()
+        .flex_shrink_0()
+}
+
+fn tab_name_capsule(background: Hsla, hover_background: Hsla) -> gpui::Div {
+    div()
+        .flex()
+        .flex_initial()
+        .min_w_0()
+        .items_center()
+        .px(px(11.0))
+        .h(px(TOP_BAR_TAB_HEIGHT - 4.0))
+        .rounded_full()
+        .bg(background)
+        .group_hover("tab", move |s| s.bg(hover_background))
+}
+
+fn tab_label_detail(name: &str, subtitle: Option<&str>, status: Option<&str>) -> String {
+    let mut lines = vec![name];
+    for detail in [subtitle, status].into_iter().flatten() {
+        if !detail.is_empty() && !lines.contains(&detail) {
+            lines.push(detail);
+        }
+    }
+    lines.join("\n")
+}
+
+fn tab_close_button(id: ElementId, cx: &App) -> Button {
+    let theme = cx.theme();
+    let ink = theme.foreground.blend(theme.background.opacity(0.30));
+    let hover_ink = theme.foreground;
+    let circle = theme
+        .foreground
+        .opacity(if theme.is_dark() { 0.13 } else { 0.09 });
+    let hover_circle = theme
+        .foreground
+        .opacity(if theme.is_dark() { 0.18 } else { 0.14 });
+    let pressed_circle = theme.foreground.opacity(0.22);
+    Button::new(id)
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .foreground(ink)
+                .hover(theme.transparent)
+                .active(theme.transparent),
+        )
+        .small()
+        .size(px(TAB_CLOSE_SIZE))
+        .p_0()
+        .bg(theme.transparent)
+        .rounded(px(TAB_CLOSE_SIZE * 0.5))
+        .tab_stop(false)
+        .accessibility_label("Close tab")
+        .tooltip("Close tab")
+        // Occluding the tab's hover hitbox makes this hover-only control
+        // disappear as the pointer enters it. Consume mouse-down instead.
+        // The containing tab still occludes native titlebar dragging.
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(
+            div()
+                .id("close-circle")
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(16.0))
+                .flex_shrink_0()
+                .rounded_full()
+                .bg(circle)
+                .group_hover("tab-close-control", move |s| s.bg(hover_circle))
+                .group_active("tab-close-control", move |s| s.bg(pressed_circle))
+                .child(
+                    svg()
+                        .path("phosphor/x-thin.svg")
+                        .size(ui_icon_px(theme, 10.0))
+                        .text_color(ink)
+                        .group_hover("tab-close-control", move |s| s.text_color(hover_ink)),
+                ),
+        )
+}
+
+// Resolve the small selection surface against chrome, not the unknown desktop
+// behind the window. The tab hit target itself remains transparent.
+fn tab_capsule_surface(backdrop: Hsla, foreground: Hsla, is_dark: bool) -> Hsla {
+    backdrop
+        .alpha(1.0)
+        .blend(foreground.opacity(if is_dark { 0.22 } else { 0.07 }))
+        .opacity(0.96)
+}
 
 fn chrome_controls_row(top_bar_height: f32) -> gpui::Div {
     div()
@@ -80,23 +202,31 @@ fn chrome_button(
     let theme = cx.theme();
     let active = toggled == Some(true);
     let ink = if active {
-        theme.primary
+        theme.foreground
     } else {
-        theme.muted_foreground
+        theme.foreground.blend(theme.background.opacity(0.28))
     };
     let surface = theme.foreground;
+    let selected_fill = if theme.is_dark() { 0.12 } else { 0.085 };
+    let hover_fill = if active {
+        if theme.is_dark() { 0.17 } else { 0.13 }
+    } else if theme.is_dark() {
+        0.09
+    } else {
+        0.06
+    };
     let mut button = Button::new(id)
         .custom(
             ButtonCustomVariant::new(cx)
                 .foreground(ink)
-                .color(surface.opacity(if active { 0.065 } else { 0.0 }))
-                .hover(surface.opacity(if active { 0.12 } else { 0.085 }))
-                .active(surface.opacity(0.16)),
+                .hover(surface.opacity(hover_fill))
+                .active(surface.opacity(if theme.is_dark() { 0.20 } else { 0.16 })),
         )
         .small()
         .size(px(CHROME_CONTROL_SIZE))
         .p_0()
-        .rounded(px(5.0))
+        .bg(surface.opacity(if active { selected_fill } else { 0.0 }))
+        .rounded(px(6.0))
         .accessibility_label(label)
         .when_some(toggled, |button, toggled| button.toggled(toggled))
         // Keep title-bar dragging from swallowing controls on Windows, and
@@ -106,7 +236,7 @@ fn chrome_button(
         .child(
             svg()
                 .path(icon)
-                .size(ui_icon_px(theme, 12.0))
+                .size(ui_icon_px(theme, 13.0))
                 .text_color(ink),
         );
     button.interactivity().tooltip(move |window, cx| {
@@ -124,10 +254,13 @@ fn chrome_button(
 
 #[cfg(test)]
 mod chrome_tests {
-    use super::{chrome_button, chrome_controls_row};
+    use super::{
+        chrome_button, chrome_controls_row, horizontal_tab_target, tab_close_button,
+        tab_identity_icon_slot, tab_identity_row, tab_name_capsule,
+    };
     use gpui::{
-        Context, FocusHandle, InteractiveElement, IntoElement, MouseButton, ParentElement, Render,
-        Styled, Window, div, px,
+        Context, ElementId, FocusHandle, InteractiveElement, IntoElement, MouseButton,
+        ParentElement, Render, StatefulInteractiveElement, Styled, Window, div, px,
     };
 
     struct ChromeTestView {
@@ -135,6 +268,138 @@ mod chrome_tests {
         focus: FocusHandle,
         clicks: usize,
         parent_mouse_downs: usize,
+    }
+
+    struct TabLayoutView {
+        width: f32,
+    }
+
+    struct HoverCloseView {
+        clicks: usize,
+        activations: usize,
+    }
+
+    impl Render for HoverCloseView {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            horizontal_tab_target()
+                .id("hover-tab")
+                .group("tab")
+                .occlude()
+                .debug_selector(|| "hover-tab".into())
+                .on_click(cx.listener(|this, _, _, _| this.activations += 1))
+                .child(
+                    tab_identity_row()
+                        .child(
+                            tab_identity_icon_slot().child(
+                                div()
+                                    .id("hover-slot")
+                                    .group("tab-close-control")
+                                    .absolute()
+                                    .left(px(0.0))
+                                    .top(px((super::TOP_BAR_TAB_HEIGHT - 20.0) * 0.5))
+                                    .size(px(20.0))
+                                    .invisible()
+                                    .group_hover("tab", |s| s.visible())
+                                    .child(
+                                        tab_close_button("hover-close".into(), cx)
+                                            .debug_selector(|| "hover-close".into())
+                                            .on_click(cx.listener(|this, _, _, cx| {
+                                                cx.stop_propagation();
+                                                this.clicks += 1;
+                                            })),
+                                    ),
+                            ),
+                        )
+                        .child(
+                            div()
+                                .debug_selector(|| "hover-label".into())
+                                .child("Example"),
+                        ),
+                )
+        }
+    }
+
+    #[gpui::test]
+    fn hovering_a_tab_reveals_a_clickable_close_control(cx: &mut gpui::TestAppContext) {
+        cx.update(gpui_component::init);
+        let (view, cx) = cx.add_window_view(|_, _| HoverCloseView {
+            clicks: 0,
+            activations: 0,
+        });
+        let target = cx.debug_bounds("hover-tab").unwrap();
+        let label_before = cx.debug_bounds("hover-label").unwrap();
+        cx.simulate_mouse_move(target.center(), None, gpui::Modifiers::default());
+        let close = cx.debug_bounds("hover-close").unwrap();
+        assert!(close.left() >= target.left());
+        assert!(close.right() <= target.right());
+        assert!(close.right() < label_before.left());
+        assert_eq!(label_before, cx.debug_bounds("hover-label").unwrap());
+        cx.simulate_click(close.center(), gpui::Modifiers::default());
+        cx.update(|_, cx| {
+            assert_eq!(view.read(cx).clicks, 1);
+            assert_eq!(view.read(cx).activations, 0);
+        });
+        cx.simulate_click(label_before.center(), gpui::Modifiers::default());
+        cx.update(|_, cx| assert_eq!(view.read(cx).activations, 1));
+    }
+
+    impl Render for TabLayoutView {
+        fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+            div()
+                .id("layout-root")
+                .debug_selector(|| "layout-root".into())
+                .flex()
+                .w(px(self.width))
+                .children(
+                    [
+                        ("short-tab", "~"),
+                        (
+                            "long-tab",
+                            "a-long-project-name-with-a-long-working-directory",
+                        ),
+                    ]
+                    .map(|(id, title)| {
+                        horizontal_tab_target()
+                            .id(id)
+                            .debug_selector(move || id.into())
+                            .child(
+                                tab_identity_row().child(tab_identity_icon_slot()).child(
+                                    tab_name_capsule(
+                                        gpui::transparent_black(),
+                                        gpui::transparent_black(),
+                                    )
+                                    .child(
+                                        div()
+                                            .min_w_0()
+                                            .overflow_x_hidden()
+                                            .whitespace_nowrap()
+                                            .text_ellipsis()
+                                            .child(title),
+                                    ),
+                                ),
+                            )
+                    }),
+                )
+        }
+    }
+
+    #[gpui::test]
+    fn tabs_fit_content_and_shrink_without_overlapping(cx: &mut gpui::TestAppContext) {
+        let (view, cx) = cx.add_window_view(|_, _| TabLayoutView { width: 700.0 });
+        let short = cx.debug_bounds("short-tab").unwrap();
+        let long = cx.debug_bounds("long-tab").unwrap();
+        assert!(short.size.width < long.size.width);
+        assert!(long.size.width <= px(super::HORIZONTAL_TAB_MAX_WIDTH));
+        assert!(short.size.width + long.size.width < px(700.0));
+        view.update(cx, |view, cx| {
+            view.width = 180.0;
+            cx.notify();
+        });
+        let root = cx.debug_bounds("layout-root").unwrap();
+        let short = cx.debug_bounds("short-tab").unwrap();
+        let long = cx.debug_bounds("long-tab").unwrap();
+        assert!(short.right() <= long.left());
+        assert!(long.right() <= root.right());
     }
 
     impl Render for ChromeTestView {
@@ -152,20 +417,26 @@ mod chrome_tests {
                     cx.listener(|this, _, _, _| this.parent_mouse_downs += 1),
                 )
                 .child(
-                    chrome_controls_row(self.height).children([false, true].map(|active| {
-                        chrome_button(
-                            if active { "chrome-on" } else { "chrome-off" },
-                            "phosphor/sidebar.svg",
-                            Some(active),
-                            "Toggle sidebar",
-                            None,
-                            cx,
-                        )
-                        .debug_selector(move || {
-                            if active { "chrome-on" } else { "chrome-off" }.into()
-                        })
-                        .on_click(cx.listener(|this, _, _, _| this.clicks += 1))
-                    })),
+                    chrome_controls_row(self.height)
+                        .children([false, true].map(|active| {
+                            chrome_button(
+                                if active { "chrome-on" } else { "chrome-off" },
+                                "phosphor/sidebar.svg",
+                                Some(active),
+                                "Toggle sidebar",
+                                None,
+                                cx,
+                            )
+                            .debug_selector(move || {
+                                if active { "chrome-on" } else { "chrome-off" }.into()
+                            })
+                            .on_click(cx.listener(|this, _, _, _| this.clicks += 1))
+                        }))
+                        .child(
+                            tab_close_button(ElementId::Name("chrome-close".into()), cx)
+                                .debug_selector(|| "chrome-close".into())
+                                .on_click(cx.listener(|this, _, _, _| this.clicks += 1)),
+                        ),
                 )
         }
     }
@@ -189,9 +460,13 @@ mod chrome_tests {
                 cx.notify();
             });
             let parent = cx.debug_bounds("chrome-test-parent").unwrap();
-            for selector in ["chrome-off", "chrome-on"] {
+            for (selector, size) in [
+                ("chrome-off", 22.0),
+                ("chrome-on", 22.0),
+                ("chrome-close", 20.0),
+            ] {
                 let button = cx.debug_bounds(selector).unwrap();
-                assert_eq!(button.size, gpui::size(px(22.0), px(22.0)));
+                assert_eq!(button.size, gpui::size(px(size), px(size)));
                 assert_eq!(
                     button.top() - parent.top(),
                     parent.bottom() - button.bottom()
@@ -204,7 +479,7 @@ mod chrome_tests {
                 });
             }
         }
-        cx.update(|_, cx| assert_eq!(view.read(cx).clicks, 4));
+        cx.update(|_, cx| assert_eq!(view.read(cx).clicks, 6));
     }
 }
 
@@ -220,6 +495,8 @@ impl ConWorkspace {
     ) -> impl IntoElement + use<> {
         self.tab_activity.read(cx).clear();
         let theme = cx.theme();
+        // Solid ink keeps small labels crisp over translucent window chrome.
+        let tab_secondary_ink = theme.foreground.blend(theme.background.opacity(0.20));
         // macOS: leave 78px for the system traffic-light cluster that
         // the OS paints over our content. Windows / Linux: start flush
         // at the left; the Min/Max/Close cluster gets appended at the
@@ -343,9 +620,11 @@ impl ConWorkspace {
         let mut tabs_container = div()
             .id("tab-strip-container")
             .flex()
-            .flex_1()
+            .flex_initial()
             .min_w_0()
-            .items_end()
+            .items_center()
+            .h(px(TOP_BAR_TAB_HEIGHT))
+            .mb(px(TAB_STRIP_INSET))
             // Container-level drag-move: position-based slot calculation.
             // This is the authoritative handler for HorizontalTabStrip drags.
             // It uses the full tab_strip_tab_bounds array to compute the drop
@@ -527,42 +806,30 @@ impl ConWorkspace {
                 let name = presentation.map_or(tab.title.as_str(), |entry| entry.name.as_str());
                 let status_detail = self.program_status_detail(tab.summary_id);
 
-                let display_title: String = if name.chars().count() > 24 {
-                    format!("{}…", &name[..name.floor_char_boundary(22)])
-                } else {
-                    name.to_owned()
-                };
+                let display_title = name.to_owned();
+                let label_detail = tab_label_detail(
+                    name,
+                    presentation.and_then(|entry| entry.subtitle.as_deref()),
+                    status_detail.as_deref(),
+                );
 
                 let close_id = ElementId::Name(format!("tab-close-{}", index).into());
 
-                let mut close_el = div()
-                    .id(close_id)
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(px(22.0))
-                    .flex_shrink_0()
-                    .rounded(px(5.0))
-                    .cursor_pointer()
-                    // Windows: without `.occlude()` the parent top_bar's
-                    // `WindowControlArea::Drag` hit-test swallows the
-                    // click (returns HTCAPTION → window drag starts).
-                    .occlude()
-                    .hover(|s| s.bg(theme.muted.opacity(0.12)));
-                if !is_active {
-                    close_el = close_el.invisible().group_hover("tab", |s| s.visible());
-                }
-                let close_button = close_el
-                    .on_click(cx.listener(move |this, _, window, cx| {
-                        cx.stop_propagation();
-                        this.close_tab_by_id(tab_id, window, cx);
-                    }))
-                    .child(
-                        svg()
-                            .path("phosphor/x.svg")
-                            .size(ui_icon_px(theme, 10.0))
-                            .text_color(theme.muted_foreground.opacity(0.42)),
-                    );
+                let close_button = div()
+                    .id(ElementId::Name(format!("tab-close-slot-{index}").into()))
+                    .group("tab-close-control")
+                    .absolute()
+                    .left(px(0.0))
+                    .top(px((TOP_BAR_TAB_HEIGHT - TAB_CLOSE_SIZE) * 0.5))
+                    .size(px(TAB_CLOSE_SIZE))
+                    .invisible()
+                    .group_hover("tab", |s| s.visible())
+                    .child(tab_close_button(close_id, cx).on_click(cx.listener(
+                        move |this, _, window, cx| {
+                            cx.stop_propagation();
+                            this.close_tab_by_id(tab_id, window, cx);
+                        },
+                    )));
 
                 // Drop indicator: 2px vertical line on the left edge of
                 // this tab when drop_slot == render_pos, or on the right edge
@@ -603,18 +870,16 @@ impl ConWorkspace {
                         .position(|tab| tab.summary_id == dragged_id)
                 });
 
-                let mut tab_el = div()
+                let mut tab_el = horizontal_tab_target()
                     .id(ElementId::Name(format!("tab-{}", index).into()))
                     .group("tab")
-                    .relative()
-                    .flex()
-                    .flex_1()
-                    .min_w_0()
-                    .max_w(px(220.0))
-                    .items_center()
-                    .px(px(10.0))
-                    .h(px(TOP_BAR_TAB_HEIGHT))
-                    .text_size(px(11.5))
+                    .text_size(ui_px(theme, 12.0))
+                    .rounded(px(5.0))
+                    .hover(|s| {
+                        s.bg(theme
+                            .foreground
+                            .opacity(if theme.is_dark() { 0.045 } else { 0.035 }))
+                    })
                     .cursor_pointer()
                     // Windows: without `.occlude()` the parent top_bar's
                     // `WindowControlArea::Drag` hit-test routes the click
@@ -756,23 +1021,25 @@ impl ConWorkspace {
                         cx.notify();
                     }));
 
-                tab_el = tab_el.when_some(status_detail, |el, detail| {
-                    el.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
+                tab_el = tab_el.tooltip(move |window, cx| {
+                    Tooltip::new(label_detail.clone()).build(window, cx)
                 });
 
-                if is_active {
-                    tab_el = tab_el
-                        .rounded_t(px(7.0))
-                        .map(|el| match tab_color {
-                            Some(color) => el.bg(crate::tab_colors::tab_accent_surface_hsla(
-                                color,
-                                crate::tab_colors::TAB_ACCENT_ACTIVE_ALPHA,
-                                cx,
-                            )),
-                            None => el.bg(theme.foreground.opacity(0.085)),
-                        })
-                        .text_color(theme.foreground)
-                        .font_weight(FontWeight::MEDIUM);
+                // Keep navigation hit targets separate from the content-sized selection mark.
+                let (capsule_bg, capsule_hover_bg) = if is_active {
+                    let bg = match tab_color {
+                        Some(color) => crate::tab_colors::tab_accent_surface_hsla(
+                            color,
+                            crate::tab_colors::TAB_ACCENT_ACTIVE_ALPHA,
+                            cx,
+                        ),
+                        None => tab_capsule_surface(
+                            top_bar_surface_color,
+                            theme.foreground,
+                            theme.is_dark(),
+                        ),
+                    };
+                    (bg, bg)
                 } else {
                     let inactive_alpha = sanitize_tab_accent_alpha(self.tab_accent_inactive_alpha);
                     let inactive_hover_alpha =
@@ -782,7 +1049,7 @@ impl ConWorkspace {
                         .map(|color| {
                             crate::tab_colors::tab_accent_surface_hsla(color, inactive_alpha, cx)
                         })
-                        .unwrap_or(theme.foreground.opacity(0.025));
+                        .unwrap_or(theme.foreground.opacity(0.0));
                     let inactive_hover_bg = tab_color
                         .map(|color| {
                             crate::tab_colors::tab_accent_surface_hsla(
@@ -791,17 +1058,27 @@ impl ConWorkspace {
                                 cx,
                             )
                         })
-                        .unwrap_or(theme.foreground.opacity(0.065));
-                    tab_el = tab_el
-                        .rounded_t(px(6.0))
-                        .bg(inactive_bg)
-                        .text_color(theme.muted_foreground)
-                        .hover(move |s: gpui::StyleRefinement| {
-                            s.bg(inactive_hover_bg).text_color(theme.foreground)
-                        });
+                        .unwrap_or(theme.foreground.opacity(0.0));
+                    (inactive_bg, inactive_hover_bg)
+                };
+
+                if render_pos + 1 < render_indices.len() {
+                    tab_el = tab_el.child(
+                        div()
+                            .absolute()
+                            .right(px(0.0))
+                            .top(px((TOP_BAR_TAB_HEIGHT - 8.0) * 0.5))
+                            .h(px(8.0))
+                            .w(px(1.0))
+                            .rounded(px(0.5))
+                            .bg(theme.foreground.opacity(if theme.is_dark() {
+                                0.14
+                            } else {
+                                0.10
+                            })),
+                    );
                 }
 
-                // Left drop indicator line
                 if show_indicator_left {
                     tab_el = tab_el.child(
                         div()
@@ -828,12 +1105,9 @@ impl ConWorkspace {
                     );
                 }
 
-                let mut tab_content = div()
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0))
-                    .size_full()
-                    .min_w_0();
+                let mut tab_content = tab_identity_row();
+
+                let mut capsule = tab_name_capsule(capsule_bg, capsule_hover_bg);
 
                 if needs_attention {
                     tab_content = tab_content.child(
@@ -846,64 +1120,69 @@ impl ConWorkspace {
                 }
 
                 tab_content = tab_content.child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .gap(px(6.0))
-                        .flex_1()
-                        .min_w(px(0.0))
-                        .overflow_x_hidden()
-                        .whitespace_nowrap()
-                        .child(
-                            self.tab_activity.read(cx).icon(
-                                tab_icon,
-                                mono_icon_px(theme, 12.5),
-                                if is_active {
-                                    tab_color
-                                        .map(|color| {
-                                            crate::tab_colors::tab_accent_color_hsla(color, cx)
-                                        })
-                                        .unwrap_or(theme.muted_foreground)
-                                } else {
-                                    theme.muted_foreground
-                                },
-                                terminal_status
-                                    .filter(|_| !is_dragged_source && tab_strip_progress > 0.01),
-                                theme,
-                                false,
-                            ),
-                        )
+                    tab_identity_icon_slot()
                         .child(
                             div()
-                                .min_w_0()
-                                .overflow_x_hidden()
-                                .whitespace_nowrap()
-                                .text_ellipsis()
-                                .font_family(theme.mono_font_family.clone())
-                                .line_height(px(14.0))
-                                .font_weight(if is_active {
-                                    FontWeight::SEMIBOLD
-                                } else {
-                                    FontWeight::MEDIUM
-                                })
-                                // Mute with a solid theme color, not glyph alpha:
-                                // the title bar itself is already translucent.
-                                .text_color(if is_active {
-                                    theme.foreground
-                                } else {
-                                    theme.muted_foreground
-                                })
-                                .child(display_title),
-                        ),
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .size(ui_icon_px(theme, 14.0))
+                                .flex_shrink_0()
+                                .group_hover("tab", |s| s.invisible())
+                                .child(self.tab_activity.read(cx).icon(
+                                    tab_icon,
+                                    ui_icon_px(theme, 14.0),
+                                    if is_active {
+                                        tab_color
+                                            .map(|color| {
+                                                crate::tab_colors::tab_accent_color_hsla(color, cx)
+                                            })
+                                            .unwrap_or(theme.foreground)
+                                    } else {
+                                        tab_secondary_ink
+                                    },
+                                    terminal_status.filter(|_| {
+                                        !is_dragged_source && tab_strip_progress > 0.01
+                                    }),
+                                    theme,
+                                    false,
+                                )),
+                        )
+                        .child(close_button),
+                );
+                capsule = capsule.child(
+                    div()
+                        .min_w_0()
+                        .overflow_x_hidden()
+                        .whitespace_nowrap()
+                        .text_ellipsis()
+                        .font_family(theme.font_family.clone())
+                        .line_height(ui_px(theme, 16.0))
+                        .font_weight(if is_active {
+                            FontWeight::MEDIUM
+                        } else {
+                            FontWeight::NORMAL
+                        })
+                        // Mute with a solid theme color, not glyph alpha:
+                        // the title bar itself is already translucent.
+                        .text_color(if is_active {
+                            theme.foreground
+                        } else {
+                            tab_secondary_ink
+                        })
+                        .child(display_title),
                 );
 
-                tab_content = tab_content.child(close_button);
+                tab_content = tab_content.child(capsule);
 
                 // When this tab is being renamed, replace the title text
                 // with an inline Input. Escape cancels; Enter confirms
                 // (handled in begin_tab_rename's subscribe_in).
                 let is_renaming = renaming_tab_index == Some(index);
                 if is_renaming && let Some(input) = rename_input.clone() {
+                    // The editor is full-width, so it needs a definite parent
+                    // width rather than the resting tab's intrinsic sizing.
+                    tab_el = tab_el.w(px(HORIZONTAL_TAB_MAX_WIDTH));
                     tab_content = div()
                         .flex()
                         .items_center()
@@ -968,14 +1247,16 @@ impl ConWorkspace {
                         div()
                             .id(ElementId::Name(format!("tab-ghost-{render_pos}").into()))
                             .flex()
-                            .flex_1()
+                            .flex_initial()
+                            .w(px(120.0))
                             .min_w_0()
-                            .max_w(px(200.0))
+                            .max_w(px(HORIZONTAL_TAB_MAX_WIDTH))
                             .items_center()
                             .px(px(10.0))
                             .h(px(TOP_BAR_TAB_HEIGHT))
-                            .text_size(px(11.5))
-                            .rounded_t(px(6.0))
+                            .text_size(ui_px(theme, 12.0))
+                            .font_family(theme.font_family.clone())
+                            .rounded(px(6.0))
                             .bg(theme.primary.opacity(0.18))
                             .text_color(theme.foreground.opacity(0.6))
                             .on_prepaint(move |bounds, _, _| {
@@ -1171,14 +1452,16 @@ impl ConWorkspace {
                             div()
                                 .id(ElementId::Name("tab-ghost-end".into()))
                                 .flex()
-                                .flex_1()
+                                .flex_initial()
+                                .w(px(120.0))
                                 .min_w_0()
-                                .max_w(px(200.0))
+                                .max_w(px(HORIZONTAL_TAB_MAX_WIDTH))
                                 .items_center()
                                 .px(px(10.0))
                                 .h(px(TOP_BAR_TAB_HEIGHT))
-                                .text_size(px(11.5))
-                                .rounded_t(px(6.0))
+                                .text_size(ui_px(theme, 12.0))
+                                .font_family(theme.font_family.clone())
+                                .rounded(px(6.0))
                                 .bg(theme.primary.opacity(0.18))
                                 .text_color(theme.foreground.opacity(0.6))
                                 .on_prepaint(move |bounds, _, _| {
@@ -1423,5 +1706,68 @@ impl ConWorkspace {
                 .opacity(tab_strip_progress)
                 .child(self.tab_activity.clone()),
         )
+    }
+}
+
+#[cfg(test)]
+mod tab_surface_tests {
+    use super::{tab_capsule_surface, tab_label_detail};
+    use gpui::{Hsla, Rgba, rgb};
+
+    fn luminance(color: Hsla) -> f32 {
+        let color = Rgba::from(color);
+        let linear = |channel: f32| {
+            if channel <= 0.04045 {
+                channel / 12.92
+            } else {
+                ((channel + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+    }
+
+    fn contrast(a: Hsla, b: Hsla) -> f32 {
+        let (a, b) = (luminance(a), luminance(b));
+        (a.max(b) + 0.05) / (a.min(b) + 0.05)
+    }
+
+    #[test]
+    fn tab_details_keep_full_unicode_names_and_distinct_context() {
+        let name = "项目 / a deliberately long workspace name";
+        assert_eq!(tab_label_detail(name, Some(name), None), name);
+        assert_eq!(
+            tab_label_detail(name, Some("~/dev/project"), Some("Waiting for input")),
+            format!("{name}\n~/dev/project\nWaiting for input")
+        );
+        assert_eq!(tab_label_detail("shell", Some(""), Some("shell")), "shell");
+    }
+
+    #[test]
+    fn default_theme_selection_stays_distinct_without_fading_its_label() {
+        for terminal_theme in [
+            con_terminal::TerminalTheme::flexoki_dark(),
+            con_terminal::TerminalTheme::flexoki_light(),
+        ] {
+            let backdrop: Hsla = rgb(terminal_theme.background.to_u32()).into();
+            let ink: Hsla = rgb(terminal_theme.foreground.to_u32()).into();
+            for chrome_opacity in [0.2, 0.82, 1.0] {
+                let capsule = tab_capsule_surface(
+                    backdrop.opacity(chrome_opacity),
+                    ink,
+                    terminal_theme.is_dark(),
+                );
+                let painted = backdrop.blend(capsule);
+                assert!(
+                    contrast(painted, backdrop) >= 1.15,
+                    "{} selection disappeared",
+                    terminal_theme.name
+                );
+                assert!(
+                    contrast(ink, painted) >= 4.5,
+                    "{} selection obscured its label",
+                    terminal_theme.name
+                );
+            }
+        }
     }
 }
