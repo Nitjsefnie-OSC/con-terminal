@@ -6,6 +6,14 @@
     <description>Most recent changes</description>
     <language>en</language>
     <item>
+      <title>Version 0.1.0-beta.126</title>
+      <pubDate/>
+      <sparkle:version>109</sparkle:version>
+      <sparkle:shortVersionString>0.1.0-beta.126</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>10.0.0</sparkle:minimumSystemVersion>
+      <enclosure url="https://github.com/nowledge-co/con-terminal/releases/download/v0.1.0-beta.126/con-0.1.0-beta.126-windows-x86_64.zip" length="57719316" type="application/octet-stream" sparkle:edSignature="wE/d1Ba3VUs2dZh8nHkBQ9eUnpUArxG2JzejWgC/6+E1BecZfM6W3RJsS2V08m2IlXsaHn+B9bzeYtHCE8TeBg=="/>
+    </item>
+    <item>
       <title>Version 0.1.0-beta.125</title>
       <pubDate/>
       <sparkle:version>108</sparkle:version>
@@ -156,14 +164,6 @@
       <sparkle:shortVersionString>0.1.0-beta.107</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>10.0.0</sparkle:minimumSystemVersion>
       <enclosure url="https://github.com/nowledge-co/con-terminal/releases/download/v0.1.0-beta.107/con-0.1.0-beta.107-windows-x86_64.zip" length="54385547" type="application/octet-stream" sparkle:edSignature="A2CRREQDqYV6HIamEwCl8zcSYRtzJxJNOWR65FWy9rGdtXC9L7wzpEIoH9IiqW7yme7a/rErZsW51xGUCq3NCg=="/>
-    </item>
-    <item>
-      <title>Version 0.1.0-beta.106</title>
-      <pubDate/>
-      <sparkle:version>89</sparkle:version>
-      <sparkle:shortVersionString>0.1.0-beta.106</sparkle:shortVersionString>
-      <sparkle:minimumSystemVersion>10.0.0</sparkle:minimumSystemVersion>
-      <enclosure url="https://github.com/nowledge-co/con-terminal/releases/download/v0.1.0-beta.106/con-0.1.0-beta.106-windows-x86_64.zip" length="54325163" type="application/octet-stream" sparkle:edSignature="tFeK4GFDmxg8Ny9zjuzhcdWKykb3cavyb4deK6AyuDTgr5HYhCiAh7NZ+viYWp23MkRg96rpIiSMCUUwdw69Bg=="/>
     </item>
   </channel>
 </rss>
