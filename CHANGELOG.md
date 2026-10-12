@@ -4,7 +4,7 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
-## `v0.1.0-beta.127`
+## `v0.1.0-beta.127` - 2026-10-12
 
 ### Changed
 
@@ -12,23 +12,33 @@ con is still pre-release, so entries may group related beta work while the produ
 
 - Horizontal tabs share a compact tray with even insets, a distinct selected
   tab, and readable labels in light and dark themes, without increasing titlebar
-  height. Close
-  controls appear beside the name on hover without shifting the text; long
-  names use the available space and remain visible in tooltips. _(PR
+  height. Close controls appear beside the name on hover without shifting the
+  text; long names use the available space and remain visible in tooltips. _(PR
   [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
   [@wey-gu](https://github.com/wey-gu))_
-- Dragged tabs use a matching capsule preview. Reordering remains stable near
-  the right end of the strip, including tabs with different widths. _(PR
-  [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
-  [@wey-gu](https://github.com/wey-gu))_
+
+**Window controls**
+
 - Titlebar panel buttons use quiet neutral fills to show which panels are open,
   with more consistent icons and hover feedback. Icons remain centred when
   the UI font size is increased. _(PR
   [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
   [@wey-gu](https://github.com/wey-gu))_
+
+**Input bar**
+
 - The bottom input bar has quieter mode controls, clearer pane-target labels,
   and a compact circular send button that stands out when input is ready.
   Its height, mode-switch shortcuts, and input behavior stay unchanged. _(PR
+  [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
+  [@wey-gu](https://github.com/wey-gu))_
+
+### Fixed
+
+**Window tabs**
+
+- Dragged tabs use a matching capsule preview. Reordering remains stable near
+  the right end of the strip, including tabs with different widths. _(PR
   [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
   [@wey-gu](https://github.com/wey-gu))_
 
