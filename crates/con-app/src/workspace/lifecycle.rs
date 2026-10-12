@@ -898,6 +898,8 @@ impl ConWorkspace {
             pane_title_drag: None,
             pane_content_bounds: std::sync::Arc::new(std::sync::Mutex::new(None)),
             tab_strip_tab_bounds: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
+            horizontal_tab_scroll: gpui::ScrollHandle::new(),
+            horizontal_tab_reveal_key: Default::default(),
             pane_title_drag_tab_bounds: std::sync::Arc::new(std::sync::Mutex::new(Vec::new())),
             hide_pane_title_bar: config.appearance.hide_pane_title_bar,
 

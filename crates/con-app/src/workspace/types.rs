@@ -1,5 +1,8 @@
 use super::*;
 
+pub(super) type HorizontalTabRevealState =
+    std::rc::Rc<std::cell::Cell<Option<(u64, usize, usize, Pixels)>>>;
+
 /// Drag state for pane title bar drag-to-tab promotion.
 #[derive(Clone)]
 pub(super) struct PaneTitleDragState {

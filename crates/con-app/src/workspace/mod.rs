@@ -311,6 +311,8 @@ pub struct ConWorkspace {
     /// resolve pane-title drag slot when cursor is in the tab bar.
     /// Vec index == tab index; each entry is the tab's window-coordinate bounds.
     tab_strip_tab_bounds: std::sync::Arc<std::sync::Mutex<Vec<Bounds<Pixels>>>>,
+    horizontal_tab_scroll: gpui::ScrollHandle,
+    horizontal_tab_reveal_key: HorizontalTabRevealState,
     /// Bounds of real tabs only (no ghost placeholder), in render order.
     /// Used exclusively by pane-title-drag slot calculation so it never
     /// needs to know where the ghost tab sits in the visual layout.

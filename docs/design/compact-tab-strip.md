@@ -8,42 +8,50 @@ configured UI font, while terminal text and code keep their monospace fonts.
 - Keep the existing titlebar heights: 28 points on macOS and 36 elsewhere.
 - Keep tab hit targets at their existing height. Use a twenty-point close control.
 - Center tab hit targets vertically, with matching space above and below.
-  A continuous, lightly tinted tray groups the targets. It has no border or
-  shadow and shares their height: 24 points on macOS, 30 elsewhere.
-  Center the tray in the titlebar, leaving two points above/below on macOS
+  One restrained outer capsule groups the targets. Resting tabs do not add
+  another fill; selection and hover use inner capsules with equal two-point
+  clearance. Targets are 24 points high on macOS, 30 elsewhere.
+  Center the row in the titlebar, leaving two points above/below on macOS
   and three elsewhere.
-- Size targets to their contents, capped at 220 points per tab. Short names do
-  not leave a long empty tail; long names receive more room. Targets shrink
-  when window space runs out, and names truncate after the fixed identity slot.
-  Unused titlebar space remains available for window dragging.
-  Inline renaming temporarily uses the capped width so its full-width editor
-  cannot collapse inside an intrinsically sized target.
+- Divide the available tab region equally, independent of title length or
+  selection. AI summaries and inline renaming must not move neighbouring tabs.
+  Names truncate after the fixed identity slot and retain full-name tooltips.
+  Keep a 140-point minimum target width; the region scrolls horizontally when
+  it cannot fit all tabs. Activating a tab reveals it, but ordinary repaints
+  must not override manual scrolling. Window controls stay outside this region;
+  blank titlebar space outside the tab strip remains draggable.
+  Reveal requests use the laid-out viewport width, tab identity, position and
+  count. Ignore queued requests superseded by another selection, manual scroll
+  or drag. Explicitly selecting the already-active tab reveals it again.
   Keep the twelve-point trailing reorder hit region outside the painted tray.
   It must not add blank width to the last tab's visible end.
-- Align the identity-slot centre with the capsule's left arc centre. Derive
-  the leading inset from half the difference between surface and slot heights:
-  zero points on macOS, three elsewhere. The fixed twenty-point identity slot,
-  six-point icon-to-label gap, and twelve-point trailing inset separate the
-  icon and text. Two-point
+- Fill each equal-width hit target with one capsule, inset by two points.
+  Keep its width independent of the name. Within it, the identity slot stays at
+  a fixed eight-point left inset. The title begins six points after the identity
+  slot. The right side reserves the close hit target, its concentric inset and
+  six points of label clearance, even while the close control is hidden.
+  This keeps icon and title together rather than distributing them across a
+  wide tab. Icons never move when names change; long names truncate without
+  overlapping either control. Two-point
   target padding separates adjacent groups without separator rules.
   The selected surface wraps the icon and name as one unit. Use the same
   `TAB_SELECTION_INSET` for target horizontal padding and selection-layer
-  vertical padding. Selection at either end of the tray then has two-point
-  clearance on all four sides, not separately chosen horizontal/vertical gaps.
+  vertical padding. Narrow targets retain two-point clearance on all four sides.
+  Wider targets retain the same clearance and fixed leading content positions.
   Its height is 20 points on macOS, 26 elsewhere. Both surfaces use half-height
   corner radii. Attention marks keep their semantic color.
-  The identity row fills the target's content width, including after a long
-  label truncates. Otherwise unused width can become an oversized trailing gap.
-- Share one fixed twenty-point leading slot between the identity icon and close
-  control. Hovering the tab hides its icon and reveals the close control in
-  exactly the same position. The capsule never moves, and the right edge has
-  no reserved action slot. Attention marks remain visible while hovered.
+  The identity row fills the capsule width, including after truncation.
+- Keep the twenty-point close control at the capsule's right end, separate from
+  the fixed identity/title group. Reserve the close control's space, so revealing
+  the close control never shifts or replaces the identity. The capsule never
+  moves. Attention marks remain visible while hovered.
   Use a twenty-point component button with a fourteen-point circular fill,
   centered vertically in the identity slot. The visual circle is smaller than
   the hit target and the name capsule.
-  Its clearance from the capsule's left, top, and bottom edges is equal:
-  three points on macOS, six elsewhere. Check against the painted capsule,
-  not the outer hit target. Attention dots occupy the trailing inset without
+  Derive the close slot's right inset from half the difference between capsule
+  and slot heights. Its visible circle has equal right/top/bottom clearance.
+  Check against the painted capsule, not the outer hit target.
+  Attention dots sit at the identity slot's upper-right corner without
   shifting the identity slot or label.
   The Phosphor thin close glyph uses a ten-point square at default UI size and
   scales in even-point steps. It stays subordinate to the identity
@@ -57,24 +65,28 @@ configured UI font, while terminal text and code keep their monospace fonts.
   Its icon becomes clearer on hover, without a destructive red treatment.
   The close control appears only while its tab is hovered, including the
   selected tab. Empty space still activates and drags the tab.
-- New-tab drag placeholders use a 120-point target. Reordering uses measured
+- New-tab drag placeholders share the equal-width allocation. Reordering uses measured
   target bounds rather than assuming equal widths. Reorder, rename,
   middle-click close, context menus, and native caption hit testing retain
   their existing handlers.
 
 ## States
 
-The tray tints the actual translucent chrome; resting tabs do not each receive
-their own fill. The selected surface is lighter than the tray in both themes:
+The outer capsule tints the actual translucent chrome and groups the entire
+strip without rules or borders. Ordinary resting tabs remain transparent inside
+it, avoiding three stacked fills. The selected inner capsule is lighter in both themes:
 a slight lightness lift in light themes, a foreground mix in dark themes.
-Its title uses medium weight. Hover adds a restrained fill around the whole
-identity group, never a separate name badge or rectangular outer frame.
+Its title uses normal weight. Hover strengthens that tab's fill, never adding
+a separate name badge or rectangular outer frame.
 Labels use solid theme-derived ink at normal weight. Selection must not depend
 on making unselected titles hard to read.
-Identity glyphs use a fourteen-point frame at default UI size, leaving room
-beside the capsule's left arc. The six-point gap groups the icon and label
+Identity glyphs use a twelve-point frame at default UI size. Generic terminal
+tabs use Phosphor's terminal-window asset for a balanced, self-contained mark;
+specific application identities remain unchanged. Labels use the UI font at
+11.5 points scaled from the configured UI size, preserving original case.
+The six-point gap groups the icon and label
 without adding padding inside the label itself. Larger UI sizes cap the frame at the
-twenty-point identity slot; the slot centre and label position stay fixed.
+twenty-point identity slot; hover never shifts the slot or label.
 
 User-assigned accent fills and configured inactive accent opacity remain
 supported. Activity and attention indicators retain their semantic colors.
@@ -92,9 +104,8 @@ Do not occlude the parent tab's hover hitbox: a hover-only close control would
 hide itself as the pointer enters it. Consume mouse-down to keep activation
 separate, and test hover followed by a click, not just the button in isolation.
 
-The shared tray ends with the tab contents, not at the window's action buttons.
-It must not consume the remaining draggable titlebar space. No nested name
-capsules, divider rules, borders, or shadows are added to this navigation group.
+The shared tray fills the tab region, not the window's action buttons.
+No nested name capsules, divider rules, borders, or shadows are added.
 
 ## Dragging
 
@@ -124,7 +135,7 @@ foreground icons instead of accent-colored glyphs. Hover and press strengthen
 the same fill, with six-point rounding and centered placement. Accessibility
 toggle metadata and shortcut tooltips remain unchanged.
 
-This change is paint and layout only. It adds no timers, theme parsing,
+This change affects tab paint, layout and overflow navigation. It adds no timers, theme parsing,
 terminal queries, native-surface changes, or new animation. Window glass,
 presentation synchronization, single-tab chrome, and vertical tabs are not
 changed.

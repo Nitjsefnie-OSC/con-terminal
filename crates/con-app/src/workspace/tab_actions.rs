@@ -7,7 +7,12 @@ impl ConWorkspace {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if index >= self.tabs.len() || index == self.active_tab {
+        if index >= self.tabs.len() {
+            return;
+        }
+        self.horizontal_tab_reveal_key.set(None);
+        if index == self.active_tab {
+            cx.notify();
             return;
         }
         let old_active = self.active_tab;
