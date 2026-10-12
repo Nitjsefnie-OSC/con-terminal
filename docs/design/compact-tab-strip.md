@@ -23,7 +23,7 @@ configured UI font, while terminal text and code keep their monospace fonts.
 - Align the identity-slot centre with the capsule's left arc centre. Derive
   the leading inset from half the difference between surface and slot heights:
   zero points on macOS, three elsewhere. The fixed twenty-point identity slot,
-  eight-point icon-to-label gap, and twelve-point trailing inset separate the
+  six-point icon-to-label gap, and twelve-point trailing inset separate the
   icon and text. Two-point
   target padding separates adjacent groups without separator rules.
   The selected surface wraps the icon and name as one unit. Use the same
@@ -71,8 +71,9 @@ Its title uses medium weight. Hover adds a restrained fill around the whole
 identity group, never a separate name badge or rectangular outer frame.
 Labels use solid theme-derived ink at normal weight. Selection must not depend
 on making unselected titles hard to read.
-Identity glyphs use a sixteen-point frame at default UI size to compensate for
-the assets' internal whitespace. Larger UI sizes cap the frame at the
+Identity glyphs use a fourteen-point frame at default UI size, leaving room
+beside the capsule's left arc. The six-point gap groups the icon and label
+without adding padding inside the label itself. Larger UI sizes cap the frame at the
 twenty-point identity slot; the slot centre and label position stay fixed.
 
 User-assigned accent fills and configured inactive accent opacity remain

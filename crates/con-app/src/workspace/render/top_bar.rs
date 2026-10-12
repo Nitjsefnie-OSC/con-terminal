@@ -11,6 +11,7 @@ const TAB_CLOSE_SIZE: f32 = 20.0;
 const TAB_SELECTION_INSET: f32 = 2.0;
 const TAB_SURFACE_HEIGHT: f32 = TOP_BAR_TAB_HEIGHT - 2.0 * TAB_SELECTION_INSET;
 const TAB_CLOSE_CIRCLE_SIZE: f32 = 14.0;
+const TAB_IDENTITY_LABEL_GAP: f32 = 6.0;
 const TAB_TRAILING_DROP_WIDTH: f32 = 12.0;
 
 fn tab_trailing_drop_target() -> gpui::Div {
@@ -30,7 +31,7 @@ fn titlebar_icon_size(theme: &gpui_component::Theme, base: f32) -> Pixels {
 }
 
 fn tab_identity_icon_size(theme: &gpui_component::Theme) -> Pixels {
-    titlebar_icon_size(theme, 16.0).min(px(TAB_CLOSE_SIZE))
+    titlebar_icon_size(theme, 14.0).min(px(TAB_CLOSE_SIZE))
 }
 
 pub(super) fn tab_drag_capsule(
@@ -40,7 +41,7 @@ pub(super) fn tab_drag_capsule(
     div()
         .flex()
         .items_center()
-        .gap(px(8.0))
+        .gap(px(TAB_IDENTITY_LABEL_GAP))
         .pl(px((TAB_SURFACE_HEIGHT - TAB_CLOSE_SIZE) * 0.5))
         .pr(px(12.0))
         .w(preview.size.width)
@@ -68,6 +69,7 @@ pub(super) fn tab_drag_capsule(
         )
         .child(
             div()
+                .debug_selector(|| "drag-capsule-label".into())
                 .flex_1()
                 .min_w_0()
                 .truncate()
@@ -126,7 +128,7 @@ fn tab_identity_row() -> gpui::Div {
         .flex()
         .flex_1()
         .items_center()
-        .gap(px(6.0))
+        .gap(px(TAB_IDENTITY_LABEL_GAP))
         // Align the identity-slot centre with the capsule's left arc centre.
         .pl(px((TAB_SURFACE_HEIGHT - TAB_CLOSE_SIZE) * 0.5))
         .pr(px(12.0))
@@ -151,7 +153,6 @@ fn tab_name_label() -> gpui::Div {
         .flex_initial()
         .min_w_0()
         .items_center()
-        .pl(px(2.0))
         .h(px(TAB_SURFACE_HEIGHT))
 }
 
@@ -442,6 +443,7 @@ mod chrome_tests {
                 });
                 let capsule = cx.debug_bounds("drag-capsule").unwrap();
                 let icon = cx.debug_bounds("drag-capsule-icon").unwrap();
+                let label = cx.debug_bounds("drag-capsule-label").unwrap();
                 assert_eq!(
                     capsule.size,
                     gpui::size(px(width), px(super::TAB_SURFACE_HEIGHT))
@@ -450,6 +452,10 @@ mod chrome_tests {
                 assert_eq!(icon.center().x - capsule.left(), capsule.size.height * 0.5);
                 assert!(icon.left() >= capsule.left());
                 assert!(icon.right() <= capsule.right());
+                assert_eq!(
+                    label.left() - icon.center().x,
+                    px(super::TAB_CLOSE_SIZE * 0.5 + super::TAB_IDENTITY_LABEL_GAP)
+                );
             }
         }
     }
@@ -584,16 +590,22 @@ mod chrome_tests {
                                                 )
                                                 .debug_selector(move || format!("{id}-surface")),
                                             )
-                                            .child(tab_identity_icon_slot())
                                             .child(
-                                                tab_name_label().child(
-                                                    div()
-                                                        .min_w_0()
-                                                        .overflow_x_hidden()
-                                                        .whitespace_nowrap()
-                                                        .text_ellipsis()
-                                                        .child(title),
+                                                tab_identity_icon_slot().debug_selector(
+                                                    move || format!("{id}-identity"),
                                                 ),
+                                            )
+                                            .child(
+                                                tab_name_label()
+                                                    .debug_selector(move || format!("{id}-label"))
+                                                    .child(
+                                                        div()
+                                                            .min_w_0()
+                                                            .overflow_x_hidden()
+                                                            .whitespace_nowrap()
+                                                            .text_ellipsis()
+                                                            .child(title),
+                                                    ),
                                             ),
                                     )
                             }),
@@ -648,6 +660,12 @@ mod chrome_tests {
                 assert_eq!(tray.bottom() - surface.bottom(), inset);
             }
             for (target, surface) in [("short-tab", first), ("long-tab", last)] {
+                let identity = cx.debug_bounds(&format!("{target}-identity")).unwrap();
+                let label = cx.debug_bounds(&format!("{target}-label")).unwrap();
+                assert_eq!(
+                    label.left() - identity.right(),
+                    px(super::TAB_IDENTITY_LABEL_GAP)
+                );
                 let target = cx.debug_bounds(target).unwrap();
                 assert_eq!(surface.left() - target.left(), inset);
                 assert_eq!(target.right() - surface.right(), inset);
