@@ -9,6 +9,8 @@ const TAB_STRIP_INSET: f32 = (TOP_BAR_TABS_HEIGHT - TOP_BAR_TAB_HEIGHT) * 0.5;
 const HORIZONTAL_TAB_MAX_WIDTH: f32 = 220.0;
 const TAB_CLOSE_SIZE: f32 = 20.0;
 const TAB_SELECTION_INSET: f32 = 2.0;
+const TAB_SURFACE_HEIGHT: f32 = TOP_BAR_TAB_HEIGHT - 2.0 * TAB_SELECTION_INSET;
+const TAB_CLOSE_CIRCLE_SIZE: f32 = 14.0;
 const TAB_TRAILING_DROP_WIDTH: f32 = 12.0;
 
 fn tab_trailing_drop_target() -> gpui::Div {
@@ -56,7 +58,7 @@ fn tab_selection_layer(background: Hsla, hover_background: Hsla) -> gpui::Div {
         .bottom(px(TAB_SELECTION_INSET))
         .left_0()
         .right_0()
-        .rounded(px((TOP_BAR_TAB_HEIGHT - 2.0 * TAB_SELECTION_INSET) * 0.5))
+        .rounded(px(TAB_SURFACE_HEIGHT * 0.5))
         .bg(background)
         .group_hover("tab", move |style| style.bg(hover_background))
 }
@@ -79,7 +81,8 @@ fn tab_identity_row() -> gpui::Div {
         .flex_1()
         .items_center()
         .gap(px(6.0))
-        .pl(px(10.0))
+        // Align the identity-slot centre with the capsule's left arc centre.
+        .pl(px((TAB_SURFACE_HEIGHT - TAB_CLOSE_SIZE) * 0.5))
         .pr(px(12.0))
         .h_full()
         .min_w_0()
@@ -103,7 +106,7 @@ fn tab_name_label() -> gpui::Div {
         .min_w_0()
         .items_center()
         .pl(px(2.0))
-        .h(px(TOP_BAR_TAB_HEIGHT - 4.0))
+        .h(px(TAB_SURFACE_HEIGHT))
 }
 
 fn tab_close_slot() -> gpui::Div {
@@ -166,9 +169,9 @@ fn tab_close_button(id: ElementId, cx: &App) -> Button {
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(14.0))
+                .size(px(TAB_CLOSE_CIRCLE_SIZE))
                 .flex_shrink_0()
-                .rounded(px(7.0))
+                .rounded(px(TAB_CLOSE_CIRCLE_SIZE * 0.5))
                 .bg(circle)
                 .group_hover("tab-close-control", move |s| s.bg(hover_circle))
                 .group_active("tab-close-control", move |s| s.bg(pressed_circle))
@@ -373,6 +376,14 @@ mod chrome_tests {
                 .on_click(cx.listener(|this, _, _, _| this.activations += 1))
                 .child(
                     tab_identity_row()
+                        .relative()
+                        .child(
+                            tab_selection_layer(
+                                gpui::transparent_black(),
+                                gpui::transparent_black(),
+                            )
+                            .debug_selector(|| "hover-surface".into()),
+                        )
                         .child(
                             tab_identity_icon_slot().child(
                                 tab_close_slot()
@@ -411,6 +422,11 @@ mod chrome_tests {
         cx.simulate_mouse_move(target.center(), None, gpui::Modifiers::default());
         let close = cx.debug_bounds("hover-close").unwrap();
         let circle = cx.debug_bounds("tab-close-circle").unwrap();
+        let surface = cx.debug_bounds("hover-surface").unwrap();
+        let clearance = (surface.size.height - circle.size.height) * 0.5;
+        assert_eq!(circle.left() - surface.left(), clearance);
+        assert_eq!(circle.top() - surface.top(), clearance);
+        assert_eq!(surface.bottom() - circle.bottom(), clearance);
         assert_eq!(circle.center().y, target.center().y);
         assert!(close.left() >= target.left());
         assert!(close.right() <= target.right());
@@ -1249,6 +1265,9 @@ impl ConWorkspace {
                 if needs_attention {
                     tab_content = tab_content.child(
                         div()
+                            .absolute()
+                            .right(px(4.0))
+                            .top(px((TOP_BAR_TAB_HEIGHT - 5.0) * 0.5))
                             .size(px(5.0))
                             .rounded_full()
                             .flex_shrink_0()

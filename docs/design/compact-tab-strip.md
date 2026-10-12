@@ -20,9 +20,11 @@ configured UI font, while terminal text and code keep their monospace fonts.
   cannot collapse inside an intrinsically sized target.
   Keep the twelve-point trailing reorder hit region outside the painted tray.
   It must not add blank width to the last tab's visible end.
-- Align each identity group to the same left inset. A ten-point leading inset,
-  fixed twenty-point identity slot, eight-point icon-to-label gap, and
-  twelve-point trailing inset balance the visible icon and text. Two-point
+- Align the identity-slot centre with the capsule's left arc centre. Derive
+  the leading inset from half the difference between surface and slot heights:
+  zero points on macOS, three elsewhere. The fixed twenty-point identity slot,
+  eight-point icon-to-label gap, and twelve-point trailing inset separate the
+  icon and text. Two-point
   target padding separates adjacent groups without separator rules.
   The selected surface wraps the icon and name as one unit. Use the same
   `TAB_SELECTION_INSET` for target horizontal padding and selection-layer
@@ -39,6 +41,10 @@ configured UI font, while terminal text and code keep their monospace fonts.
   Use a twenty-point component button with a fourteen-point circular fill,
   centered vertically in the identity slot. The visual circle is smaller than
   the hit target and the name capsule.
+  Its clearance from the capsule's left, top, and bottom edges is equal:
+  three points on macOS, six elsewhere. Check against the painted capsule,
+  not the outer hit target. Attention dots occupy the trailing inset without
+  shifting the identity slot or label.
   The Phosphor thin close glyph uses a ten-point square at default UI size and
   scales in even-point steps. It stays subordinate to the identity
   icon but remains readable. A quiet circular fill is visible whenever the

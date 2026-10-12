@@ -27,6 +27,11 @@ included in the painted tray. The close overlay was a block container; its inlin
 button followed text-baseline placement. A circle could be centred within its
 button while the whole button sat below the tab centre.
 
+The next visual review also exposed a mismatch between icon-row padding and
+the capsule radius: a ten-point leading inset made the fourteen-point close
+circle sit thirteen points from the left edge but three points from top/bottom
+on macOS. Vertical centring alone did not make the nested circles concentric.
+
 ## Fix
 
 The painted tray now shares the target height. One two-point selection inset
@@ -44,6 +49,12 @@ The trailing drop target sits immediately outside the tray as an absolute
 hit region; it retains end-of-strip reordering without enlarging the fill.
 The hover interaction test checks the circle against the tab centre, and the
 inset test checks each painted layer against its own target as well as the tray.
+
+The identity-slot centre now matches the capsule's left arc centre. Leading
+padding derives from the surface and hit-target heights, rather than an
+independent text inset. The hover test checks equal left/top/bottom clearance
+against the painted surface. Attention dots use trailing space instead of
+inserting another flex item before the identity slot.
 
 ## Verification
 
