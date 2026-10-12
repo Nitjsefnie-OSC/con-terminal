@@ -17,7 +17,7 @@ configured UI font, while terminal text and code keep their monospace fonts.
   cannot collapse inside an intrinsically sized target.
 - Align each identity group to the same left inset. A fixed-size identity icon
   sits outside a content-sized name capsule, with six points between them.
-  Matching six-point leading/trailing insets and two-point target padding keep
+  Matching six-point leading/trailing insets and four-point target padding keep
   the identity distinct without a large empty tail between neighboring tabs.
   The capsule has eleven-point horizontal padding and a height four points
   smaller than the target. It is not the tab's outer frame. Attention marks
@@ -26,7 +26,7 @@ configured UI font, while terminal text and code keep their monospace fonts.
   control. Hovering the tab hides its icon and reveals the close control in
   exactly the same position. The capsule never moves, and the right edge has
   no reserved action slot. Attention marks remain visible while hovered.
-  Use a twenty-point component button with a sixteen-point circular fill,
+  Use a twenty-point component button with a fourteen-point circular fill,
   centered vertically in the identity slot. The visual circle is smaller than
   the hit target and the name capsule.
   The ten-point Phosphor thin close glyph stays subordinate to the identity
@@ -42,11 +42,13 @@ configured UI font, while terminal text and code keep their monospace fonts.
 
 ## States
 
-Only the selected capsule has a neutral fill, composited from the titlebar base
-and theme foreground before painting with near-opaque coverage. This keeps its
-lightness distinct from translucent chrome, including over a dark desktop.
-It has a medium-weight title. Other capsules have no neutral fill. Hover adds
-a restrained fill only to the name capsule, never a rectangular outer frame
+Each name capsule has a neutral fill. The selected fill is composited from
+the titlebar base and theme foreground before painting with near-opaque
+coverage. Resting and hovered fills tint the actual translucent chrome instead
+of replacing it with an assumed opaque terminal background.
+The selected capsule has a stronger fill and a medium-weight title. Resting
+capsules have a light fill so each tab remains a distinct unit. Hover strengthens
+only the name capsule's fill, never a rectangular outer frame
 around the capsule and its identity icon. Capsule corner radii are half their
 height, including while hovered. Labels use solid,
 theme-derived ink at normal weight. Selection must not depend on making
@@ -68,9 +70,10 @@ Do not occlude the parent tab's hover hitbox: a hover-only close control would
 hide itself as the pointer enters it. Consume mouse-down to keep activation
 separate, and test hover followed by a click, not just the button in isolation.
 
-There is no shared segmented-control background. Quiet, eight-point separators
-mark the target boundaries without boxing tabs in. The smaller capsule
-distinguishes selection without filling the larger navigation target.
+There is no shared segmented-control background or separator rule. The spacing
+between identity groups and their individual name capsules marks each tab as a
+distinct unit. The smaller capsule distinguishes selection without filling the
+larger navigation target.
 
 ## Scope
 

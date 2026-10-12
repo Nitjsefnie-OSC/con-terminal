@@ -10,7 +10,7 @@ con is still pre-release, so entries may group related beta work while the produ
 
 **Window tabs**
 
-- Horizontal tabs use a smaller name capsule with clearer spacing and readable
+- Horizontal tabs use individual name capsules with clearer spacing and readable
   labels in light and dark themes, without increasing titlebar height. Close
   controls appear beside the name on hover without shifting the text; long
   names use the available space and remain visible in tooltips. _(PR

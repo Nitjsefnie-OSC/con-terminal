@@ -17,7 +17,7 @@ fn horizontal_tab_target() -> gpui::Div {
         .min_w_0()
         .max_w(px(HORIZONTAL_TAB_MAX_WIDTH))
         .items_center()
-        .px(px(2.0))
+        .px(px(4.0))
         .h(px(TOP_BAR_TAB_HEIGHT))
 }
 
@@ -68,14 +68,14 @@ fn tab_label_detail(name: &str, subtitle: Option<&str>, status: Option<&str>) ->
 
 fn tab_close_button(id: ElementId, cx: &App) -> Button {
     let theme = cx.theme();
-    let ink = theme.foreground.blend(theme.background.opacity(0.30));
+    let ink = theme.foreground.blend(theme.background.opacity(0.15));
     let hover_ink = theme.foreground;
     let circle = theme
         .foreground
-        .opacity(if theme.is_dark() { 0.13 } else { 0.09 });
+        .opacity(if theme.is_dark() { 0.085 } else { 0.055 });
     let hover_circle = theme
         .foreground
-        .opacity(if theme.is_dark() { 0.18 } else { 0.14 });
+        .opacity(if theme.is_dark() { 0.16 } else { 0.12 });
     let pressed_circle = theme.foreground.opacity(0.22);
     Button::new(id)
         .custom(
@@ -102,7 +102,7 @@ fn tab_close_button(id: ElementId, cx: &App) -> Button {
                 .flex()
                 .items_center()
                 .justify_center()
-                .size(px(16.0))
+                .size(px(14.0))
                 .flex_shrink_0()
                 .rounded_full()
                 .bg(circle)
@@ -123,8 +123,16 @@ fn tab_close_button(id: ElementId, cx: &App) -> Button {
 fn tab_capsule_surface(backdrop: Hsla, foreground: Hsla, is_dark: bool) -> Hsla {
     backdrop
         .alpha(1.0)
-        .blend(foreground.opacity(if is_dark { 0.22 } else { 0.07 }))
+        .blend(foreground.opacity(if is_dark { 0.22 } else { 0.12 }))
         .opacity(0.96)
+}
+
+fn tab_resting_capsule_surface(foreground: Hsla, is_dark: bool) -> Hsla {
+    foreground.opacity(if is_dark { 0.045 } else { 0.035 })
+}
+
+fn tab_hover_capsule_surface(foreground: Hsla, is_dark: bool) -> Hsla {
+    foreground.opacity(if is_dark { 0.085 } else { 0.06 })
 }
 
 fn chrome_controls_row(top_bar_height: f32) -> gpui::Div {
@@ -1043,7 +1051,9 @@ impl ConWorkspace {
                         .map(|color| {
                             crate::tab_colors::tab_accent_surface_hsla(color, inactive_alpha, cx)
                         })
-                        .unwrap_or(theme.foreground.opacity(0.0));
+                        .unwrap_or_else(|| {
+                            tab_resting_capsule_surface(theme.foreground, theme.is_dark())
+                        });
                     let inactive_hover_bg = tab_color
                         .map(|color| {
                             crate::tab_colors::tab_accent_surface_hsla(
@@ -1052,30 +1062,11 @@ impl ConWorkspace {
                                 cx,
                             )
                         })
-                        .unwrap_or(theme.foreground.opacity(if theme.is_dark() {
-                            0.07
-                        } else {
-                            0.05
-                        }));
+                        .unwrap_or_else(|| {
+                            tab_hover_capsule_surface(theme.foreground, theme.is_dark())
+                        });
                     (inactive_bg, inactive_hover_bg)
                 };
-
-                if render_pos + 1 < render_indices.len() {
-                    tab_el = tab_el.child(
-                        div()
-                            .absolute()
-                            .right(px(0.0))
-                            .top(px((TOP_BAR_TAB_HEIGHT - 8.0) * 0.5))
-                            .h(px(8.0))
-                            .w(px(1.0))
-                            .rounded(px(0.5))
-                            .bg(theme.foreground.opacity(if theme.is_dark() {
-                                0.14
-                            } else {
-                                0.10
-                            })),
-                    );
-                }
 
                 if show_indicator_left {
                     tab_el = tab_el.child(
@@ -1709,7 +1700,10 @@ impl ConWorkspace {
 
 #[cfg(test)]
 mod tab_surface_tests {
-    use super::{tab_capsule_surface, tab_label_detail};
+    use super::{
+        tab_capsule_surface, tab_hover_capsule_surface, tab_label_detail,
+        tab_resting_capsule_surface,
+    };
     use gpui::{Hsla, Rgba, rgb};
 
     fn luminance(color: Hsla) -> f32 {
@@ -1755,6 +1749,18 @@ mod tab_surface_tests {
                     terminal_theme.is_dark(),
                 );
                 let painted = backdrop.blend(capsule);
+                let resting =
+                    backdrop.blend(tab_resting_capsule_surface(ink, terminal_theme.is_dark()));
+                let hovered =
+                    backdrop.blend(tab_hover_capsule_surface(ink, terminal_theme.is_dark()));
+                assert!(
+                    contrast(painted, resting) >= 1.10,
+                    "{} selected and resting capsules are indistinguishable",
+                    terminal_theme.name
+                );
+                for surface in [resting, hovered] {
+                    assert!(contrast(ink, surface) >= 4.5);
+                }
                 assert!(
                     contrast(painted, backdrop) >= 1.15,
                     "{} selection disappeared",
