@@ -659,9 +659,12 @@ mod chrome_tests {
                 assert_eq!(surface.top() - tray.top(), inset);
                 assert_eq!(tray.bottom() - surface.bottom(), inset);
             }
-            for (target, surface) in [("short-tab", first), ("long-tab", last)] {
-                let identity = cx.debug_bounds(&format!("{target}-identity")).unwrap();
-                let label = cx.debug_bounds(&format!("{target}-label")).unwrap();
+            for (target, surface, identity_selector, label_selector) in [
+                ("short-tab", first, "short-tab-identity", "short-tab-label"),
+                ("long-tab", last, "long-tab-identity", "long-tab-label"),
+            ] {
+                let identity = cx.debug_bounds(identity_selector).unwrap();
+                let label = cx.debug_bounds(label_selector).unwrap();
                 assert_eq!(
                     label.left() - identity.right(),
                     px(super::TAB_IDENTITY_LABEL_GAP)
