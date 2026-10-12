@@ -1061,27 +1061,24 @@ impl Render for ConWorkspace {
 
         root = root
             .key_context("ConWorkspace")
-            // Pane drag-to-resize: capture mouse move/up on root so it works
-            // even when cursor is over terminal views (which capture mouse events).
-            .on_mouse_move({
-                cx.listener(move |this, event: &MouseMoveEvent, win, cx| {
-                    if this.handle_active_resize_mouse_move(event, win, cx) {
+            .on_drag_move::<DraggedTab>(cx.listener(
+                |this, event: &gpui::DragMoveEvent<DraggedTab>, win, cx| {
+                    if event.drag(cx).origin != DraggedTabOrigin::HorizontalTabStrip {
                         return;
                     }
-
                     if let Some(preview) = this
                         .tab_drag_preview
                         .lock()
                         .ok()
                         .and_then(|guard| guard.clone())
                     {
-                        let preview_size = tab_like_drag_preview_size();
+                        let preview_size = preview.size;
                         let leading_pad = top_bar::top_bar_leading_pad(win);
                         let min_left = px(leading_pad);
                         let max_left =
                             (win.viewport_size().width - preview_size.width).max(min_left);
                         let probe = tab_drag_overlay_probe_position(
-                            event.position,
+                            event.event.position,
                             &preview,
                             preview_size,
                             min_left,
@@ -1093,8 +1090,24 @@ impl Render for ConWorkspace {
                             .ok()
                             .map(|g| g.clone())
                             .unwrap_or_default();
-                        if let Some(slot) =
-                            horizontal_tab_slot_from_bounds(probe, &tab_bounds, this.tabs.len())
+                        let dragged_id = this
+                            .active_dragged_tab_session_id
+                            .lock()
+                            .ok()
+                            .and_then(|id| *id);
+                        if let Some(slot) = this
+                            .tabs
+                            .iter()
+                            .position(|tab| Some(tab.summary_id) == dragged_id)
+                            .and_then(|source| {
+                                horizontal_tab_slot_from_bounds(
+                                    probe,
+                                    &tab_bounds,
+                                    this.tabs.len(),
+                                    source,
+                                    preview.source_visual_index,
+                                )
+                            })
                         {
                             let new_target = Some(TabDragTarget::Reorder { slot });
                             if this.tab_strip_drop_slot != Some(slot)
@@ -1104,15 +1117,16 @@ impl Render for ConWorkspace {
                                 this.tab_drag_target = new_target;
                                 cx.notify();
                             }
-                        } else {
-                            // Cursor left valid tab bounds — clear stale target.
-                            if this.tab_strip_drop_slot.is_some() || this.tab_drag_target.is_some()
-                            {
-                                this.tab_strip_drop_slot = None;
-                                this.tab_drag_target = None;
-                                cx.notify();
-                            }
                         }
+                    }
+                },
+            ))
+            // Pane drag-to-resize: capture mouse move/up on root so it works
+            // even when cursor is over terminal views (which capture mouse events).
+            .on_mouse_move({
+                cx.listener(move |this, event: &MouseMoveEvent, win, cx| {
+                    if this.handle_active_resize_mouse_move(event, win, cx) {
+                        return;
                     }
 
                     if this.active_tab >= this.tabs.len() {
@@ -1387,37 +1401,18 @@ impl Render for ConWorkspace {
             .ok()
             .and_then(|guard| guard.clone())
         {
-            let preview_size = tab_like_drag_preview_size();
+            let preview_size = preview.size;
             let leading_pad = top_bar::top_bar_leading_pad(window);
             let min_left = px(leading_pad);
             let max_left = (window.viewport_size().width - preview_size.width).max(min_left);
             let left =
                 tab_drag_overlay_origin(window.mouse_position(), &preview, min_left, max_left).x;
             root = root.child(
-                div()
+                top_bar::tab_drag_capsule(&preview, &theme)
                     .absolute()
                     .left(left)
                     .top(preview.source_top)
-                    .w(preview_size.width)
-                    .h(preview_size.height)
-                    .px(px(10.0))
-                    .rounded(px(4.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0))
-                    .cursor_grab()
-                    .bg(theme.title_bar.opacity(0.92))
-                    .font_family(theme.font_family.clone())
-                    .text_size(px(12.0))
-                    .text_color(theme.foreground.opacity(0.82))
-                    .child(
-                        svg()
-                            .path(preview.icon)
-                            .size(ui_icon_px(&theme, 12.0))
-                            .flex_shrink_0()
-                            .text_color(theme.foreground),
-                    )
-                    .child(div().flex_1().min_w_0().truncate().child(preview.title)),
+                    .cursor_grab(),
             );
         }
 

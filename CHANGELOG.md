@@ -11,9 +11,14 @@ con is still pre-release, so entries may group related beta work while the produ
 **Window tabs**
 
 - Horizontal tabs share a compact tray with even insets, a distinct selected
-  tab, and readable labels in light and dark themes, without increasing titlebar height. Close
+  tab, and readable labels in light and dark themes, without increasing titlebar
+  height. Close
   controls appear beside the name on hover without shifting the text; long
   names use the available space and remain visible in tooltips. _(PR
+  [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
+  [@wey-gu](https://github.com/wey-gu))_
+- Dragged tabs use a matching capsule preview. Reordering remains stable near
+  the right end of the strip, including tabs with different widths. _(PR
   [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
   [@wey-gu](https://github.com/wey-gu))_
 - Titlebar panel buttons use quiet neutral fills to show which panels are open,

@@ -298,88 +298,39 @@ pub(super) fn split_preview_regions(
     }
 }
 
-pub(super) fn horizontal_tab_slot_from_position(
-    cursor: gpui::Point<gpui::Pixels>,
-    bounds: gpui::Bounds<gpui::Pixels>,
-    index: usize,
-) -> Option<usize> {
-    if !point_in_bounds(&cursor, &bounds) {
-        return None;
-    }
-    let local_x = cursor.x - bounds.origin.x;
-    let half = bounds.size.width / 2.0;
-    Some(if local_x < half { index } else { index + 1 })
-}
-
-pub(super) fn horizontal_tab_slot_from_drag(
-    cursor: gpui::Point<gpui::Pixels>,
-    bounds: gpui::Bounds<gpui::Pixels>,
-    hovered_index: usize,
-    source_index: Option<usize>,
-) -> Option<usize> {
-    if !point_in_bounds(&cursor, &bounds) {
-        return None;
-    }
-
-    let Some(source_index) = source_index else {
-        return horizontal_tab_slot_from_position(cursor, bounds, hovered_index);
-    };
-
-    // Chrome-style: trigger swap as soon as cursor enters a neighbouring tab.
-    // After the swap the dragged tab occupies hovered_index, so cursor is
-    // inside the dragged tab and no further swap fires until cursor moves on.
-    if hovered_index != source_index {
-        Some(remap_drop_slot_for_current_order(
-            source_index,
-            hovered_index,
-        ))
-    } else {
-        None
-    }
-}
-
-/// Position-based slot calculation using the full tab bounds array.
-/// This is the authoritative slot source for container-level drag-move
-/// handlers — it works regardless of which individual tab the cursor
-/// is currently over, so it handles "jump over tabs" correctly.
-///
-/// `tab_bounds` is in visual render order (already reordered for live
-/// preview). `tab_count` is the number of real tabs (excluding any ghost).
-///
-/// Returns `None` when `tab_bounds` is empty (first drag frame before
-/// prepaint has run). Returns `Some(slot)` where slot is 0..=tab_count.
-///
-/// The returned slot is in drop-slot space (same coordinate system as
-/// `tab_strip_drop_slot` and `reorder_tab_by_id`'s `to` parameter).
-/// `render_indices` is built so that visual position i == drop slot i,
-/// so `visual_slot` can be used directly as the drop slot.
+/// Convert a probe in the live preview back to the original tab order.
+/// Ignore the dragged tab's placeholder: it is the result of a reorder, not a
+/// neighbour to cross. Otherwise repainting can immediately reverse a swap.
 pub(super) fn horizontal_tab_slot_from_bounds(
     cursor: gpui::Point<gpui::Pixels>,
     tab_bounds: &[gpui::Bounds<gpui::Pixels>],
     tab_count: usize,
+    source_index: usize,
+    source_visual_index: usize,
 ) -> Option<usize> {
-    if tab_bounds.is_empty() {
+    if tab_count == 0
+        || tab_bounds.len() != tab_count
+        || source_index >= tab_count
+        || source_visual_index >= tab_count
+    {
         return None;
     }
-    // Find which visual slot the cursor is in by comparing against each
-    // tab's midpoint — same logic as pane_title_drag_tab_slot.
-    let mut slot = tab_count;
-    for (i, bounds) in tab_bounds.iter().enumerate() {
-        let mid_x = bounds.origin.x + bounds.size.width / 2.0;
-        if cursor.x < mid_x {
-            slot = i.min(tab_count);
-            break;
-        }
-    }
-    Some(slot)
+    let insertion = tab_bounds
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| *index != source_visual_index)
+        .position(|(_, bounds)| cursor.x < bounds.center().x)
+        .unwrap_or(tab_count - 1);
+    Some(if insertion > source_index {
+        insertion + 1
+    } else {
+        insertion
+    })
 }
 
-pub(super) fn trailing_drop_slot_from_position(
-    cursor: gpui::Point<gpui::Pixels>,
-    bounds: gpui::Bounds<gpui::Pixels>,
-    slot: usize,
-) -> Option<usize> {
-    point_in_bounds(&cursor, &bounds).then_some(slot)
+pub(super) fn tab_reorder_destination(source: usize, slot: usize, count: usize) -> usize {
+    let destination = if source < slot { slot - 1 } else { slot };
+    destination.min(count.saturating_sub(1))
 }
 
 pub(super) fn tab_rename_commit_label(

@@ -24,6 +24,8 @@ pub(super) struct TabDragPreviewState {
     pub(super) icon: &'static str,
     pub(super) source_top: Pixels,
     pub(super) cursor_offset_x: Pixels,
+    pub(super) size: Size<Pixels>,
+    pub(super) source_visual_index: usize,
 }
 
 pub(super) fn tab_drag_overlay_origin(
@@ -136,17 +138,6 @@ pub(super) fn pane_title_drag_tab_slot(
         }
     }
     tab_count
-}
-
-pub(super) fn remap_drop_slot_for_current_order(
-    source_index: usize,
-    hovered_index: usize,
-) -> usize {
-    if hovered_index > source_index {
-        hovered_index + 1
-    } else {
-        hovered_index
-    }
 }
 
 pub(super) fn is_dragged_tab_source(

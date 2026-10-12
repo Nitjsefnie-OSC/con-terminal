@@ -44,7 +44,7 @@ const MAX_GLOBAL_SHELL_HISTORY: usize = 240;
 const MAX_GLOBAL_INPUT_HISTORY: usize = 240;
 const SPLIT_PREVIEW_SEAM_THICKNESS: f32 = 6.0;
 const TAB_DRAG_PREVIEW_WIDTH: f32 = 180.0;
-const TAB_DRAG_PREVIEW_HEIGHT: f32 = 28.0;
+const TAB_DRAG_PREVIEW_HEIGHT: f32 = TOP_BAR_TAB_HEIGHT - 4.0;
 
 use crate::activity_bar::{ActivityBar, ActivitySlot, ActivitySlotChanged, ActivityTogglePanel};
 use crate::agent_panel::{

@@ -71,6 +71,9 @@ Its title uses medium weight. Hover adds a restrained fill around the whole
 identity group, never a separate name badge or rectangular outer frame.
 Labels use solid theme-derived ink at normal weight. Selection must not depend
 on making unselected titles hard to read.
+Identity glyphs use a sixteen-point frame at default UI size to compensate for
+the assets' internal whitespace. Larger UI sizes cap the frame at the
+twenty-point identity slot; the slot centre and label position stay fixed.
 
 User-assigned accent fills and configured inactive accent opacity remain
 supported. Activity and attention indicators retain their semantic colors.
@@ -91,6 +94,24 @@ separate, and test hover followed by a click, not just the button in isolation.
 The shared tray ends with the tab contents, not at the window's action buttons.
 It must not consume the remaining draggable titlebar space. No nested name
 capsules, divider rules, borders, or shadows are added to this navigation group.
+
+## Dragging
+
+The floating horizontal-tab preview uses the measured source surface width,
+the same capsule height/radius, identity slot, UI font, and solid ink as resting
+tabs. Pointer offset is relative to the painted surface, not its padded target.
+The preview does not retain the older fixed-width rectangular card.
+
+One workspace-root drag-move handler owns horizontal reordering. It probes the
+floating capsule's centre and compares it with the actual prepainted neighbour
+bounds, excluding the dragged tab's own placeholder. Convert the resulting
+insertion position back to the original tab order before committing a drop.
+The source's visual index belongs to the layout snapshot, not a newly requested
+drop slot that may not have painted yet. Keep the last valid target through
+missing or partial snapshots; do not reset or reorder based on incomplete data.
+
+Pane-to-tab promotion retains its separate ghost/drop flow. Resting mouse moves
+and pane-resize handling do not run horizontal reorder calculations.
 
 ## Scope
 
