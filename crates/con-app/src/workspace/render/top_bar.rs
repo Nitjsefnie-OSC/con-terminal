@@ -8,6 +8,47 @@ const CHROME_CONTROL_SIZE: f32 = 22.0;
 const TAB_STRIP_INSET: f32 = (TOP_BAR_TABS_HEIGHT - TOP_BAR_TAB_HEIGHT) * 0.5;
 const HORIZONTAL_TAB_MAX_WIDTH: f32 = 220.0;
 const TAB_CLOSE_SIZE: f32 = 20.0;
+const TAB_SELECTION_INSET: f32 = 2.0;
+
+fn titlebar_icon_size(theme: &gpui_component::Theme, base: f32) -> Pixels {
+    // Even logical dimensions centre on the same pixel grid as the fixed
+    // square controls at both 1x and 2x, including when UI scaling is applied.
+    px((ui_icon_px(theme, base).as_f32() * 0.5).round() * 2.0)
+}
+
+fn tab_tray_container() -> gpui::Div {
+    div()
+        .relative()
+        .flex()
+        .flex_initial()
+        .min_w_0()
+        .items_center()
+        .h(px(TOP_BAR_TAB_HEIGHT))
+        .mb(px(TAB_STRIP_INSET))
+}
+
+fn tab_tray_layer(background: Hsla) -> gpui::Div {
+    div()
+        .absolute()
+        .top_0()
+        .bottom_0()
+        .left_0()
+        .right_0()
+        .rounded(px(TOP_BAR_TAB_HEIGHT * 0.5))
+        .bg(background)
+}
+
+fn tab_selection_layer(background: Hsla, hover_background: Hsla) -> gpui::Div {
+    div()
+        .absolute()
+        .top(px(TAB_SELECTION_INSET))
+        .bottom(px(TAB_SELECTION_INSET))
+        .left_0()
+        .right_0()
+        .rounded(px((TOP_BAR_TAB_HEIGHT - 2.0 * TAB_SELECTION_INSET) * 0.5))
+        .bg(background)
+        .group_hover("tab", move |style| style.bg(hover_background))
+}
 
 fn horizontal_tab_target() -> gpui::Div {
     div()
@@ -17,7 +58,7 @@ fn horizontal_tab_target() -> gpui::Div {
         .min_w_0()
         .max_w(px(HORIZONTAL_TAB_MAX_WIDTH))
         .items_center()
-        .px(px(4.0))
+        .px(px(TAB_SELECTION_INSET))
         .h(px(TOP_BAR_TAB_HEIGHT))
 }
 
@@ -83,6 +124,8 @@ fn tab_close_button(id: ElementId, cx: &App) -> Button {
         )
         .small()
         .size(px(TAB_CLOSE_SIZE))
+        .w(px(TAB_CLOSE_SIZE))
+        .h(px(TAB_CLOSE_SIZE))
         .p_0()
         .bg(theme.transparent)
         .rounded(px(TAB_CLOSE_SIZE * 0.5))
@@ -96,19 +139,22 @@ fn tab_close_button(id: ElementId, cx: &App) -> Button {
         .child(
             div()
                 .id("close-circle")
+                .debug_selector(|| "tab-close-circle".into())
                 .flex()
                 .items_center()
                 .justify_center()
                 .size(px(14.0))
                 .flex_shrink_0()
-                .rounded_full()
+                .rounded(px(7.0))
                 .bg(circle)
                 .group_hover("tab-close-control", move |s| s.bg(hover_circle))
                 .group_active("tab-close-control", move |s| s.bg(pressed_circle))
                 .child(
                     svg()
+                        .debug_selector(|| "tab-close-glyph".into())
                         .path("phosphor/x-thin.svg")
-                        .size(ui_icon_px(theme, 9.0))
+                        .size(titlebar_icon_size(theme, 9.0))
+                        .flex_shrink_0()
                         .text_color(ink)
                         .group_hover("tab-close-control", move |s| s.text_color(hover_ink)),
                 ),
@@ -246,8 +292,10 @@ fn chrome_button(
         .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
         .child(
             svg()
+                .debug_selector(move || format!("{id}-icon").into())
                 .path(icon)
-                .size(ui_icon_px(theme, 13.0))
+                .size(titlebar_icon_size(theme, 13.0))
+                .flex_shrink_0()
                 .text_color(ink),
         );
     button.interactivity().tooltip(move |window, cx| {
@@ -267,7 +315,8 @@ fn chrome_button(
 mod chrome_tests {
     use super::{
         chrome_button, chrome_controls_row, horizontal_tab_target, tab_close_button,
-        tab_identity_icon_slot, tab_identity_row, tab_name_label,
+        tab_identity_icon_slot, tab_identity_row, tab_name_label, tab_selection_layer,
+        tab_tray_container, tab_tray_layer,
     };
     use gpui::{
         Context, ElementId, FocusHandle, InteractiveElement, IntoElement, MouseButton,
@@ -361,31 +410,52 @@ mod chrome_tests {
                 .debug_selector(|| "layout-root".into())
                 .flex()
                 .w(px(self.width))
-                .children(
-                    [
-                        ("short-tab", "~"),
-                        (
-                            "long-tab",
-                            "a-long-project-name-with-a-long-working-directory",
-                        ),
-                    ]
-                    .map(|(id, title)| {
-                        horizontal_tab_target()
-                            .id(id)
-                            .debug_selector(move || id.into())
-                            .child(
-                                tab_identity_row().child(tab_identity_icon_slot()).child(
-                                    tab_name_label().child(
-                                        div()
-                                            .min_w_0()
-                                            .overflow_x_hidden()
-                                            .whitespace_nowrap()
-                                            .text_ellipsis()
-                                            .child(title),
-                                    ),
+                .h(px(super::TOP_BAR_TABS_HEIGHT))
+                .items_end()
+                .child(
+                    tab_tray_container()
+                        .child(
+                            tab_tray_layer(gpui::transparent_black())
+                                .debug_selector(|| "tray-paint".into()),
+                        )
+                        .children(
+                            [
+                                ("short-tab", "~"),
+                                (
+                                    "long-tab",
+                                    "a-long-project-name-with-a-long-working-directory",
                                 ),
-                            )
-                    }),
+                            ]
+                            .map(|(id, title)| {
+                                horizontal_tab_target()
+                                    .id(id)
+                                    .debug_selector(move || id.into())
+                                    .child(
+                                        tab_identity_row()
+                                            .relative()
+                                            .child(
+                                                tab_selection_layer(
+                                                    gpui::transparent_black(),
+                                                    gpui::transparent_black(),
+                                                )
+                                                .debug_selector(move || {
+                                                    format!("{id}-surface").into()
+                                                }),
+                                            )
+                                            .child(tab_identity_icon_slot())
+                                            .child(
+                                                tab_name_label().child(
+                                                    div()
+                                                        .min_w_0()
+                                                        .overflow_x_hidden()
+                                                        .whitespace_nowrap()
+                                                        .text_ellipsis()
+                                                        .child(title),
+                                                ),
+                                            ),
+                                    )
+                            }),
+                        ),
                 )
         }
     }
@@ -407,6 +477,29 @@ mod chrome_tests {
         let long = cx.debug_bounds("long-tab").unwrap();
         assert!(short.right() <= long.left());
         assert!(long.right() <= root.right());
+    }
+
+    #[gpui::test]
+    fn selected_tab_uses_equal_tray_insets_at_both_ends(cx: &mut gpui::TestAppContext) {
+        let (view, cx) = cx.add_window_view(|_, _| TabLayoutView { width: 700.0 });
+        for width in [700.0, 180.0, 420.0] {
+            view.update(cx, |view, cx| {
+                view.width = width;
+                cx.notify();
+            });
+            let root = cx.debug_bounds("layout-root").unwrap();
+            let tray = cx.debug_bounds("tray-paint").unwrap();
+            let first = cx.debug_bounds("short-tab-surface").unwrap();
+            let last = cx.debug_bounds("long-tab-surface").unwrap();
+            let inset = px(super::TAB_SELECTION_INSET);
+            assert_eq!(tray.top() - root.top(), root.bottom() - tray.bottom());
+            assert_eq!(first.left() - tray.left(), inset);
+            assert_eq!(tray.right() - last.right(), inset);
+            for surface in [first, last] {
+                assert_eq!(surface.top() - tray.top(), inset);
+                assert_eq!(tray.bottom() - surface.bottom(), inset);
+            }
+        }
     }
 
     impl Render for ChromeTestView {
@@ -462,31 +555,61 @@ mod chrome_tests {
             }
         });
         for height in [28.0, 36.0] {
-            view.update(cx, |view, cx| {
-                view.height = height;
-                cx.notify();
-            });
-            let parent = cx.debug_bounds("chrome-test-parent").unwrap();
-            for (selector, size) in [
-                ("chrome-off", 22.0),
-                ("chrome-on", 22.0),
-                ("chrome-close", 20.0),
-            ] {
-                let button = cx.debug_bounds(selector).unwrap();
-                assert_eq!(button.size, gpui::size(px(size), px(size)));
-                assert_eq!(
-                    button.top() - parent.top(),
-                    parent.bottom() - button.bottom()
-                );
-                cx.simulate_click(button.center(), gpui::Modifiers::default());
-                cx.update(|window, cx| {
-                    let state = view.read(cx);
-                    assert!(state.focus.is_focused(window));
-                    assert_eq!(state.parent_mouse_downs, 0);
+            for font_size in [16.0, 24.0] {
+                view.update(cx, |view, cx| {
+                    view.height = height;
+                    cx.global_mut::<gpui_component::Theme>().font_size = px(font_size);
+                    cx.notify();
                 });
+                let parent = cx.debug_bounds("chrome-test-parent").unwrap();
+                for (selector, size) in [
+                    ("chrome-off", 22.0),
+                    ("chrome-on", 22.0),
+                    ("chrome-close", 20.0),
+                ] {
+                    let button = cx.debug_bounds(selector).unwrap();
+                    assert_eq!(button.size, gpui::size(px(size), px(size)));
+                    assert_eq!(
+                        button.top() - parent.top(),
+                        parent.bottom() - button.bottom()
+                    );
+                    let glyph = cx
+                        .debug_bounds(if selector == "chrome-close" {
+                            "tab-close-glyph"
+                        } else if selector == "chrome-on" {
+                            "chrome-on-icon"
+                        } else {
+                            "chrome-off-icon"
+                        })
+                        .unwrap();
+                    assert_eq!(glyph.size.width, glyph.size.height);
+                    assert!(
+                        (button.center().x - glyph.center().x).abs() < px(0.01),
+                        "{selector}, font={font_size}, height={height}: button={button:?}, glyph={glyph:?}"
+                    );
+                    assert!(
+                        (button.center().y - glyph.center().y).abs() < px(0.01),
+                        "{selector}, font={font_size}, height={height}: button={button:?}, glyph={glyph:?}"
+                    );
+                    if selector == "chrome-close" {
+                        let circle = cx.debug_bounds("tab-close-circle").unwrap();
+                        assert_eq!(circle.size, gpui::size(px(14.0), px(14.0)));
+                        assert_eq!(circle.center(), button.center());
+                        assert_eq!(
+                            circle.top() - button.top(),
+                            button.bottom() - circle.bottom()
+                        );
+                    }
+                    cx.simulate_click(button.center(), gpui::Modifiers::default());
+                    cx.update(|window, cx| {
+                        let state = view.read(cx);
+                        assert!(state.focus.is_focused(window));
+                        assert_eq!(state.parent_mouse_downs, 0);
+                    });
+                }
             }
         }
-        cx.update(|_, cx| assert_eq!(view.read(cx).clicks, 6));
+        cx.update(|_, cx| assert_eq!(view.read(cx).clicks, 12));
     }
 }
 
@@ -624,25 +747,12 @@ impl ConWorkspace {
         // Snapshot rename state for this render frame.
         let renaming_tab_index = self.tab_rename.as_ref().map(|r| r.tab_index);
         let rename_input = self.tab_rename.as_ref().map(|r| r.input.clone());
-        let mut tabs_container = div()
+        let mut tabs_container = tab_tray_container()
             .id("tab-strip-container")
-            .relative()
-            .flex()
-            .flex_initial()
-            .min_w_0()
-            .items_center()
-            .h(px(TOP_BAR_TAB_HEIGHT))
-            .child(
-                div()
-                    .absolute()
-                    .top(px(1.0))
-                    .bottom(px(1.0))
-                    .left_0()
-                    .right_0()
-                    .rounded(px((TOP_BAR_TAB_HEIGHT - 2.0) * 0.5))
-                    .bg(tab_tray_surface(theme.foreground, theme.is_dark())),
-            )
-            .mb(px(TAB_STRIP_INSET))
+            .child(tab_tray_layer(tab_tray_surface(
+                theme.foreground,
+                theme.is_dark(),
+            )))
             // Container-level drag-move: position-based slot calculation.
             // This is the authoritative handler for HorizontalTabStrip drags.
             // It uses the full tab_strip_tab_bounds array to compute the drop
@@ -1100,17 +1210,9 @@ impl ConWorkspace {
                     );
                 }
 
-                let mut tab_content = tab_identity_row().relative().child(
-                    div()
-                        .absolute()
-                        .top(px(2.0))
-                        .bottom(px(2.0))
-                        .left_0()
-                        .right_0()
-                        .rounded(px((TOP_BAR_TAB_HEIGHT - 4.0) * 0.5))
-                        .bg(capsule_bg)
-                        .group_hover("tab", move |style| style.bg(capsule_hover_bg)),
-                );
+                let mut tab_content = tab_identity_row()
+                    .relative()
+                    .child(tab_selection_layer(capsule_bg, capsule_hover_bg));
 
                 let mut name_label = tab_name_label();
 
@@ -1131,12 +1233,12 @@ impl ConWorkspace {
                                 .flex()
                                 .items_center()
                                 .justify_center()
-                                .size(ui_icon_px(theme, 14.0))
+                                .size(titlebar_icon_size(theme, 14.0))
                                 .flex_shrink_0()
                                 .group_hover("tab", |s| s.invisible())
                                 .child(self.tab_activity.read(cx).icon(
                                     tab_icon,
-                                    ui_icon_px(theme, 14.0),
+                                    titlebar_icon_size(theme, 14.0),
                                     if is_active {
                                         tab_color
                                             .map(|color| {

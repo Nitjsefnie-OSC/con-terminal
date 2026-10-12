@@ -9,7 +9,9 @@ configured UI font, while terminal text and code keep their monospace fonts.
 - Keep tab hit targets at their existing height. Use a twenty-point close control.
 - Center tab hit targets vertically, with matching space above and below.
   A continuous, lightly tinted tray groups the targets. It has no border or
-  shadow, and its painted height is two points smaller than the hit targets.
+  shadow and shares their height: 24 points on macOS, 30 elsewhere.
+  Center the tray in the titlebar, leaving two points above/below on macOS
+  and three elsewhere.
 - Size targets to their contents, capped at 220 points per tab. Short names do
   not leave a long empty tail; long names receive more room. Targets shrink
   when window space runs out, and names truncate after the fixed identity slot.
@@ -18,11 +20,14 @@ configured UI font, while terminal text and code keep their monospace fonts.
   cannot collapse inside an intrinsically sized target.
 - Align each identity group to the same left inset. A ten-point leading inset,
   fixed twenty-point identity slot, eight-point icon-to-label gap, and
-  twelve-point trailing inset balance the visible icon and text. Four-point
+  twelve-point trailing inset balance the visible icon and text. Two-point
   target padding separates adjacent groups without separator rules.
-  The selected surface wraps the icon and name as one unit. Its twenty-point
-  height leaves even clearance inside the twenty-two-point tray. Both surfaces
-  use half-height corner radii. Attention marks keep their semantic color.
+  The selected surface wraps the icon and name as one unit. Use the same
+  `TAB_SELECTION_INSET` for target horizontal padding and selection-layer
+  vertical padding. Selection at either end of the tray then has two-point
+  clearance on all four sides, not separately chosen horizontal/vertical gaps.
+  Its height is 20 points on macOS, 26 elsewhere. Both surfaces use half-height
+  corner radii. Attention marks keep their semantic color.
 - Share one fixed twenty-point leading slot between the identity icon and close
   control. Hovering the tab hides its icon and reveals the close control in
   exactly the same position. The capsule never moves, and the right edge has
@@ -30,9 +35,12 @@ configured UI font, while terminal text and code keep their monospace fonts.
   Use a twenty-point component button with a fourteen-point circular fill,
   centered vertically in the identity slot. The visual circle is smaller than
   the hit target and the name capsule.
-  The nine-point Phosphor thin close glyph stays subordinate to the identity
+  The Phosphor thin close glyph uses a ten-point square at default UI size and
+  scales in even-point steps. It stays subordinate to the identity
   icon but remains readable. A quiet circular fill is visible whenever the
   close control appears, then strengthens when the control itself is hovered.
+  Keep the button explicitly square and check the inner circle and SVG centres,
+  not only the button's outer bounds, including with a larger UI font size.
   Its icon becomes clearer on hover, without a destructive red treatment.
   The close control appears only while its tab is hovered, including the
   selected tab. Empty space still activates and drags the tab.
@@ -73,8 +81,10 @@ capsules, divider rules, borders, or shadows are added to this navigation group.
 
 ## Scope
 
-Titlebar actions retain their twenty-two-point hit targets and use thirteen-point
-Phosphor icons. Open-panel states have a persistent neutral fill and solid
+Titlebar actions retain their twenty-two-point hit targets and use fourteen-point
+Phosphor icons at default UI size, scaling in even-point steps. Fractional icon
+dimensions can snap their origin and size differently and move their centre.
+Open-panel states have a persistent neutral fill and solid
 foreground icons instead of accent-colored glyphs. Hover and press strengthen
 the same fill, with six-point rounding and centered placement. Accessibility
 toggle metadata and shortcut tooltips remain unchanged.

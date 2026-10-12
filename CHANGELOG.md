@@ -10,14 +10,15 @@ con is still pre-release, so entries may group related beta work while the produ
 
 **Window tabs**
 
-- Horizontal tabs share a compact tray with a distinct selected tab and readable
-  labels in light and dark themes, without increasing titlebar height. Close
+- Horizontal tabs share a compact tray with even insets, a distinct selected
+  tab, and readable labels in light and dark themes, without increasing titlebar height. Close
   controls appear beside the name on hover without shifting the text; long
   names use the available space and remain visible in tooltips. _(PR
   [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
   [@wey-gu](https://github.com/wey-gu))_
 - Titlebar panel buttons use quiet neutral fills to show which panels are open,
-  with more consistent icons and hover feedback. _(PR
+  with more consistent icons and hover feedback. Icons remain centred when
+  the UI font size is increased. _(PR
   [#468](https://github.com/nowledge-co/con-terminal/pull/468) by
   [@wey-gu](https://github.com/wey-gu))_
 - The bottom input bar has quieter mode controls, clearer pane-target labels,
