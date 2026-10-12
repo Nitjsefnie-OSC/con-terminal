@@ -4,6 +4,21 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.128` - 2026-10-12
+
+### Fixed
+
+**Window tabs**
+
+- Horizontal tabs share the available width equally, so AI name updates no
+  longer move neighbouring tabs. Long names truncate with full-name tooltips;
+  narrow windows allow horizontal scrolling instead of shrinking targets away.
+  A quiet outer capsule groups the strip, with fixed icon and title positions
+  and an independent hover-only close control on the right. Selecting a tab
+  brings it into view without pulling the strip back during ordinary scrolling.
+  _(PR [#469](https://github.com/nowledge-co/con-terminal/pull/469) by
+  [@wey-gu](https://github.com/wey-gu))_
+
 ## `v0.1.0-beta.127` - 2026-10-12
 
 ### Changed
