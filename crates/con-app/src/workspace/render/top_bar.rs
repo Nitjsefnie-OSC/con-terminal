@@ -26,8 +26,8 @@ fn tab_identity_row() -> gpui::Div {
         .flex()
         .items_center()
         .gap(px(6.0))
-        .pl(px(6.0))
-        .pr(px(6.0))
+        .pl(px(10.0))
+        .pr(px(12.0))
         .h_full()
         .min_w_0()
 }
@@ -43,17 +43,14 @@ fn tab_identity_icon_slot() -> gpui::Div {
         .flex_shrink_0()
 }
 
-fn tab_name_capsule(background: Hsla, hover_background: Hsla) -> gpui::Div {
+fn tab_name_label() -> gpui::Div {
     div()
         .flex()
         .flex_initial()
         .min_w_0()
         .items_center()
-        .px(px(11.0))
+        .pl(px(2.0))
         .h(px(TOP_BAR_TAB_HEIGHT - 4.0))
-        .rounded(px((TOP_BAR_TAB_HEIGHT - 4.0) * 0.5))
-        .bg(background)
-        .group_hover("tab", move |s| s.bg(hover_background))
 }
 
 fn tab_label_detail(name: &str, subtitle: Option<&str>, status: Option<&str>) -> String {
@@ -72,11 +69,11 @@ fn tab_close_button(id: ElementId, cx: &App) -> Button {
     let hover_ink = theme.foreground;
     let circle = theme
         .foreground
-        .opacity(if theme.is_dark() { 0.085 } else { 0.055 });
+        .opacity(if theme.is_dark() { 0.065 } else { 0.04 });
     let hover_circle = theme
         .foreground
-        .opacity(if theme.is_dark() { 0.16 } else { 0.12 });
-    let pressed_circle = theme.foreground.opacity(0.22);
+        .opacity(if theme.is_dark() { 0.14 } else { 0.10 });
+    let pressed_circle = theme.foreground.opacity(0.18);
     Button::new(id)
         .custom(
             ButtonCustomVariant::new(cx)
@@ -111,7 +108,7 @@ fn tab_close_button(id: ElementId, cx: &App) -> Button {
                 .child(
                     svg()
                         .path("phosphor/x-thin.svg")
-                        .size(ui_icon_px(theme, 10.0))
+                        .size(ui_icon_px(theme, 9.0))
                         .text_color(ink)
                         .group_hover("tab-close-control", move |s| s.text_color(hover_ink)),
                 ),
@@ -120,18 +117,24 @@ fn tab_close_button(id: ElementId, cx: &App) -> Button {
 
 // Resolve the small selection surface against chrome, not the unknown desktop
 // behind the window. The tab hit target itself remains transparent.
-fn tab_capsule_surface(backdrop: Hsla, foreground: Hsla, is_dark: bool) -> Hsla {
-    backdrop
-        .alpha(1.0)
-        .blend(foreground.opacity(if is_dark { 0.22 } else { 0.12 }))
-        .opacity(0.96)
+fn tab_selected_surface(backdrop: Hsla, foreground: Hsla, is_dark: bool) -> Hsla {
+    let backdrop = backdrop.alpha(1.0);
+    let surface = if is_dark {
+        backdrop.blend(foreground.opacity(0.22))
+    } else {
+        Hsla {
+            l: (backdrop.l + 0.04).min(1.0),
+            ..backdrop
+        }
+    };
+    surface.opacity(0.96)
 }
 
-fn tab_resting_capsule_surface(foreground: Hsla, is_dark: bool) -> Hsla {
-    foreground.opacity(if is_dark { 0.045 } else { 0.035 })
+fn tab_tray_surface(foreground: Hsla, is_dark: bool) -> Hsla {
+    foreground.opacity(if is_dark { 0.045 } else { 0.06 })
 }
 
-fn tab_hover_capsule_surface(foreground: Hsla, is_dark: bool) -> Hsla {
+fn tab_hover_surface(foreground: Hsla, is_dark: bool) -> Hsla {
     foreground.opacity(if is_dark { 0.085 } else { 0.06 })
 }
 
@@ -264,7 +267,7 @@ fn chrome_button(
 mod chrome_tests {
     use super::{
         chrome_button, chrome_controls_row, horizontal_tab_target, tab_close_button,
-        tab_identity_icon_slot, tab_identity_row, tab_name_capsule,
+        tab_identity_icon_slot, tab_identity_row, tab_name_label,
     };
     use gpui::{
         Context, ElementId, FocusHandle, InteractiveElement, IntoElement, MouseButton,
@@ -372,11 +375,7 @@ mod chrome_tests {
                             .debug_selector(move || id.into())
                             .child(
                                 tab_identity_row().child(tab_identity_icon_slot()).child(
-                                    tab_name_capsule(
-                                        gpui::transparent_black(),
-                                        gpui::transparent_black(),
-                                    )
-                                    .child(
+                                    tab_name_label().child(
                                         div()
                                             .min_w_0()
                                             .overflow_x_hidden()
@@ -627,11 +626,22 @@ impl ConWorkspace {
         let rename_input = self.tab_rename.as_ref().map(|r| r.input.clone());
         let mut tabs_container = div()
             .id("tab-strip-container")
+            .relative()
             .flex()
             .flex_initial()
             .min_w_0()
             .items_center()
             .h(px(TOP_BAR_TAB_HEIGHT))
+            .child(
+                div()
+                    .absolute()
+                    .top(px(1.0))
+                    .bottom(px(1.0))
+                    .left_0()
+                    .right_0()
+                    .rounded(px((TOP_BAR_TAB_HEIGHT - 2.0) * 0.5))
+                    .bg(tab_tray_surface(theme.foreground, theme.is_dark())),
+            )
             .mb(px(TAB_STRIP_INSET))
             // Container-level drag-move: position-based slot calculation.
             // This is the authoritative handler for HorizontalTabStrip drags.
@@ -1035,7 +1045,7 @@ impl ConWorkspace {
                             crate::tab_colors::TAB_ACCENT_ACTIVE_ALPHA,
                             cx,
                         ),
-                        None => tab_capsule_surface(
+                        None => tab_selected_surface(
                             top_bar_surface_color,
                             theme.foreground,
                             theme.is_dark(),
@@ -1051,9 +1061,7 @@ impl ConWorkspace {
                         .map(|color| {
                             crate::tab_colors::tab_accent_surface_hsla(color, inactive_alpha, cx)
                         })
-                        .unwrap_or_else(|| {
-                            tab_resting_capsule_surface(theme.foreground, theme.is_dark())
-                        });
+                        .unwrap_or(theme.transparent);
                     let inactive_hover_bg = tab_color
                         .map(|color| {
                             crate::tab_colors::tab_accent_surface_hsla(
@@ -1062,9 +1070,7 @@ impl ConWorkspace {
                                 cx,
                             )
                         })
-                        .unwrap_or_else(|| {
-                            tab_hover_capsule_surface(theme.foreground, theme.is_dark())
-                        });
+                        .unwrap_or_else(|| tab_hover_surface(theme.foreground, theme.is_dark()));
                     (inactive_bg, inactive_hover_bg)
                 };
 
@@ -1094,9 +1100,19 @@ impl ConWorkspace {
                     );
                 }
 
-                let mut tab_content = tab_identity_row();
+                let mut tab_content = tab_identity_row().relative().child(
+                    div()
+                        .absolute()
+                        .top(px(2.0))
+                        .bottom(px(2.0))
+                        .left_0()
+                        .right_0()
+                        .rounded(px((TOP_BAR_TAB_HEIGHT - 4.0) * 0.5))
+                        .bg(capsule_bg)
+                        .group_hover("tab", move |style| style.bg(capsule_hover_bg)),
+                );
 
-                let mut capsule = tab_name_capsule(capsule_bg, capsule_hover_bg);
+                let mut name_label = tab_name_label();
 
                 if needs_attention {
                     tab_content = tab_content.child(
@@ -1139,7 +1155,7 @@ impl ConWorkspace {
                         )
                         .child(close_button),
                 );
-                capsule = capsule.child(
+                name_label = name_label.child(
                     div()
                         .min_w_0()
                         .overflow_x_hidden()
@@ -1162,7 +1178,7 @@ impl ConWorkspace {
                         .child(display_title),
                 );
 
-                tab_content = tab_content.child(capsule);
+                tab_content = tab_content.child(name_label);
 
                 // When this tab is being renamed, replace the title text
                 // with an inline Input. Escape cancels; Enter confirms
@@ -1700,10 +1716,7 @@ impl ConWorkspace {
 
 #[cfg(test)]
 mod tab_surface_tests {
-    use super::{
-        tab_capsule_surface, tab_hover_capsule_surface, tab_label_detail,
-        tab_resting_capsule_surface,
-    };
+    use super::{tab_hover_surface, tab_label_detail, tab_selected_surface, tab_tray_surface};
     use gpui::{Hsla, Rgba, rgb};
 
     fn luminance(color: Hsla) -> f32 {
@@ -1743,16 +1756,14 @@ mod tab_surface_tests {
             let backdrop: Hsla = rgb(terminal_theme.background.to_u32()).into();
             let ink: Hsla = rgb(terminal_theme.foreground.to_u32()).into();
             for chrome_opacity in [0.2, 0.82, 1.0] {
-                let capsule = tab_capsule_surface(
+                let capsule = tab_selected_surface(
                     backdrop.opacity(chrome_opacity),
                     ink,
                     terminal_theme.is_dark(),
                 );
                 let painted = backdrop.blend(capsule);
-                let resting =
-                    backdrop.blend(tab_resting_capsule_surface(ink, terminal_theme.is_dark()));
-                let hovered =
-                    backdrop.blend(tab_hover_capsule_surface(ink, terminal_theme.is_dark()));
+                let resting = backdrop.blend(tab_tray_surface(ink, terminal_theme.is_dark()));
+                let hovered = resting.blend(tab_hover_surface(ink, terminal_theme.is_dark()));
                 assert!(
                     contrast(painted, resting) >= 1.10,
                     "{} selected and resting capsules are indistinguishable",
@@ -1761,11 +1772,6 @@ mod tab_surface_tests {
                 for surface in [resting, hovered] {
                     assert!(contrast(ink, surface) >= 4.5);
                 }
-                assert!(
-                    contrast(painted, backdrop) >= 1.15,
-                    "{} selection disappeared",
-                    terminal_theme.name
-                );
                 assert!(
                     contrast(ink, painted) >= 4.5,
                     "{} selection obscured its label",

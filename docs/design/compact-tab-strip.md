@@ -8,20 +8,21 @@ configured UI font, while terminal text and code keep their monospace fonts.
 - Keep the existing titlebar heights: 28 points on macOS and 36 elsewhere.
 - Keep tab hit targets at their existing height. Use a twenty-point close control.
 - Center tab hit targets vertically, with matching space above and below.
-  The strip and resting hit targets have no background, border, or shadow.
+  A continuous, lightly tinted tray groups the targets. It has no border or
+  shadow, and its painted height is two points smaller than the hit targets.
 - Size targets to their contents, capped at 220 points per tab. Short names do
   not leave a long empty tail; long names receive more room. Targets shrink
   when window space runs out, and names truncate after the fixed identity slot.
   Unused titlebar space remains available for window dragging.
   Inline renaming temporarily uses the capped width so its full-width editor
   cannot collapse inside an intrinsically sized target.
-- Align each identity group to the same left inset. A fixed-size identity icon
-  sits outside a content-sized name capsule, with six points between them.
-  Matching six-point leading/trailing insets and four-point target padding keep
-  the identity distinct without a large empty tail between neighboring tabs.
-  The capsule has eleven-point horizontal padding and a height four points
-  smaller than the target. It is not the tab's outer frame. Attention marks
-  remain separate from the name and keep their semantic color.
+- Align each identity group to the same left inset. A ten-point leading inset,
+  fixed twenty-point identity slot, eight-point icon-to-label gap, and
+  twelve-point trailing inset balance the visible icon and text. Four-point
+  target padding separates adjacent groups without separator rules.
+  The selected surface wraps the icon and name as one unit. Its twenty-point
+  height leaves even clearance inside the twenty-two-point tray. Both surfaces
+  use half-height corner radii. Attention marks keep their semantic color.
 - Share one fixed twenty-point leading slot between the identity icon and close
   control. Hovering the tab hides its icon and reveals the close control in
   exactly the same position. The capsule never moves, and the right edge has
@@ -29,7 +30,7 @@ configured UI font, while terminal text and code keep their monospace fonts.
   Use a twenty-point component button with a fourteen-point circular fill,
   centered vertically in the identity slot. The visual circle is smaller than
   the hit target and the name capsule.
-  The ten-point Phosphor thin close glyph stays subordinate to the identity
+  The nine-point Phosphor thin close glyph stays subordinate to the identity
   icon but remains readable. A quiet circular fill is visible whenever the
   close control appears, then strengthens when the control itself is hovered.
   Its icon becomes clearer on hover, without a destructive red treatment.
@@ -42,17 +43,13 @@ configured UI font, while terminal text and code keep their monospace fonts.
 
 ## States
 
-Each name capsule has a neutral fill. The selected fill is composited from
-the titlebar base and theme foreground before painting with near-opaque
-coverage. Resting and hovered fills tint the actual translucent chrome instead
-of replacing it with an assumed opaque terminal background.
-The selected capsule has a stronger fill and a medium-weight title. Resting
-capsules have a light fill so each tab remains a distinct unit. Hover strengthens
-only the name capsule's fill, never a rectangular outer frame
-around the capsule and its identity icon. Capsule corner radii are half their
-height, including while hovered. Labels use solid,
-theme-derived ink at normal weight. Selection must not depend on making
-unselected titles hard to read.
+The tray tints the actual translucent chrome; resting tabs do not each receive
+their own fill. The selected surface is lighter than the tray in both themes:
+a slight lightness lift in light themes, a foreground mix in dark themes.
+Its title uses medium weight. Hover adds a restrained fill around the whole
+identity group, never a separate name badge or rectangular outer frame.
+Labels use solid theme-derived ink at normal weight. Selection must not depend
+on making unselected titles hard to read.
 
 User-assigned accent fills and configured inactive accent opacity remain
 supported. Activity and attention indicators retain their semantic colors.
@@ -70,10 +67,9 @@ Do not occlude the parent tab's hover hitbox: a hover-only close control would
 hide itself as the pointer enters it. Consume mouse-down to keep activation
 separate, and test hover followed by a click, not just the button in isolation.
 
-There is no shared segmented-control background or separator rule. The spacing
-between identity groups and their individual name capsules marks each tab as a
-distinct unit. The smaller capsule distinguishes selection without filling the
-larger navigation target.
+The shared tray ends with the tab contents, not at the window's action buttons.
+It must not consume the remaining draggable titlebar space. No nested name
+capsules, divider rules, borders, or shadows are added to this navigation group.
 
 ## Scope
 

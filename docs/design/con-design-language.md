@@ -92,9 +92,9 @@ con is light-first (Flexoki Light default) but must excel in both themes.
 - On transparent tab chrome, use solid foreground/muted foreground theme tokens
   for readable titles and identity icons. Do not further fade those glyphs with
   alpha; retain translucency on the surface instead.
-- Horizontal tabs use a small name capsule rather than a filled outer frame.
-  Keep identity icons outside the capsule and reveal close in the same leading
-  slot on hover, without shifting the title. See
+- Horizontal tabs share a lightly tinted tray. The selected inset surface
+  groups its identity icon and name, while resting tabs stay flat. Reveal close
+  in the same leading slot on hover without shifting the title. See
   `docs/design/compact-tab-strip.md` for geometry and interaction constraints.
 - Apply the same rule throughout sidebar navigation, file trees and search,
   including disclosure arrows, secondary paths and result line numbers.
