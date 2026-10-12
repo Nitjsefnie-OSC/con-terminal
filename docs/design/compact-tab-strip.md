@@ -18,6 +18,8 @@ configured UI font, while terminal text and code keep their monospace fonts.
   Unused titlebar space remains available for window dragging.
   Inline renaming temporarily uses the capped width so its full-width editor
   cannot collapse inside an intrinsically sized target.
+  Keep the twelve-point trailing reorder hit region outside the painted tray.
+  It must not add blank width to the last tab's visible end.
 - Align each identity group to the same left inset. A ten-point leading inset,
   fixed twenty-point identity slot, eight-point icon-to-label gap, and
   twelve-point trailing inset balance the visible icon and text. Two-point
@@ -28,6 +30,8 @@ configured UI font, while terminal text and code keep their monospace fonts.
   clearance on all four sides, not separately chosen horizontal/vertical gaps.
   Its height is 20 points on macOS, 26 elsewhere. Both surfaces use half-height
   corner radii. Attention marks keep their semantic color.
+  The identity row fills the target's content width, including after a long
+  label truncates. Otherwise unused width can become an oversized trailing gap.
 - Share one fixed twenty-point leading slot between the identity icon and close
   control. Hovering the tab hides its icon and reveals the close control in
   exactly the same position. The capsule never moves, and the right edge has
@@ -41,6 +45,9 @@ configured UI font, while terminal text and code keep their monospace fonts.
   close control appears, then strengthens when the control itself is hovered.
   Keep the button explicitly square and check the inner circle and SVG centres,
   not only the button's outer bounds, including with a larger UI font size.
+  The overlay slot is also a centred flex container: an inline button in a
+  block container follows the inherited text baseline rather than its centre.
+  Check the circle against the actual tab, not just against the button.
   Its icon becomes clearer on hover, without a destructive red treatment.
   The close control appears only while its tab is hovered, including the
   selected tab. Empty space still activates and drags the tab.

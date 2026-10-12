@@ -20,6 +20,13 @@ a 17.5-point icon at origin `(2, 5)` inside a 22-point button at `(0, 3)`.
 Their centres differed by 0.25 points in both axes. A centred outer button
 therefore did not establish that its SVG was centred after pixel snapping.
 
+A follow-up screenshot exposed two gaps in that verification. The identity
+row needed to fill its target's content width, but native inspection confirmed
+the extra trailing clearance came from a twelve-point reorder drop target
+included in the painted tray. The close overlay was a block container; its inline
+button followed text-baseline placement. A circle could be centred within its
+button while the whole button sat below the tab centre.
+
 ## Fix
 
 The painted tray now shares the target height. One two-point selection inset
@@ -30,6 +37,13 @@ Titlebar icons use even logical dimensions after UI scaling, keeping them on
 the same grid as their square controls. The close hit target is explicitly
 square, and its visual circle stays separate from that target. No per-icon
 position offsets or changes to terminal rendering are needed.
+
+The identity row now fills available content width. A shared centred flex
+overlay places the close button independently of the inherited text baseline.
+The trailing drop target sits immediately outside the tray as an absolute
+hit region; it retains end-of-strip reordering without enlarging the fill.
+The hover interaction test checks the circle against the tab centre, and the
+inset test checks each painted layer against its own target as well as the tray.
 
 ## Verification
 

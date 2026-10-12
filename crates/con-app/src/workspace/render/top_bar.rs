@@ -9,6 +9,17 @@ const TAB_STRIP_INSET: f32 = (TOP_BAR_TABS_HEIGHT - TOP_BAR_TAB_HEIGHT) * 0.5;
 const HORIZONTAL_TAB_MAX_WIDTH: f32 = 220.0;
 const TAB_CLOSE_SIZE: f32 = 20.0;
 const TAB_SELECTION_INSET: f32 = 2.0;
+const TAB_TRAILING_DROP_WIDTH: f32 = 12.0;
+
+fn tab_trailing_drop_target() -> gpui::Div {
+    // Keep the end-of-strip drop affordance without extending the painted tray.
+    div()
+        .absolute()
+        .right(px(-TAB_TRAILING_DROP_WIDTH))
+        .top_0()
+        .w(px(TAB_TRAILING_DROP_WIDTH))
+        .h_full()
+}
 
 fn titlebar_icon_size(theme: &gpui_component::Theme, base: f32) -> Pixels {
     // Even logical dimensions centre on the same pixel grid as the fixed
@@ -65,6 +76,7 @@ fn horizontal_tab_target() -> gpui::Div {
 fn tab_identity_row() -> gpui::Div {
     div()
         .flex()
+        .flex_1()
         .items_center()
         .gap(px(6.0))
         .pl(px(10.0))
@@ -92,6 +104,17 @@ fn tab_name_label() -> gpui::Div {
         .items_center()
         .pl(px(2.0))
         .h(px(TOP_BAR_TAB_HEIGHT - 4.0))
+}
+
+fn tab_close_slot() -> gpui::Div {
+    div()
+        .absolute()
+        .left_0()
+        .top(px((TOP_BAR_TAB_HEIGHT - TAB_CLOSE_SIZE) * 0.5))
+        .size(px(TAB_CLOSE_SIZE))
+        .flex()
+        .items_center()
+        .justify_center()
 }
 
 fn tab_label_detail(name: &str, subtitle: Option<&str>, status: Option<&str>) -> String {
@@ -315,8 +338,8 @@ fn chrome_button(
 mod chrome_tests {
     use super::{
         chrome_button, chrome_controls_row, horizontal_tab_target, tab_close_button,
-        tab_identity_icon_slot, tab_identity_row, tab_name_label, tab_selection_layer,
-        tab_tray_container, tab_tray_layer,
+        tab_close_slot, tab_identity_icon_slot, tab_identity_row, tab_name_label,
+        tab_selection_layer, tab_trailing_drop_target, tab_tray_container, tab_tray_layer,
     };
     use gpui::{
         Context, ElementId, FocusHandle, InteractiveElement, IntoElement, MouseButton,
@@ -343,6 +366,7 @@ mod chrome_tests {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
             horizontal_tab_target()
                 .id("hover-tab")
+                .text_size(px(12.0))
                 .group("tab")
                 .occlude()
                 .debug_selector(|| "hover-tab".into())
@@ -351,13 +375,9 @@ mod chrome_tests {
                     tab_identity_row()
                         .child(
                             tab_identity_icon_slot().child(
-                                div()
+                                tab_close_slot()
                                     .id("hover-slot")
                                     .group("tab-close-control")
-                                    .absolute()
-                                    .left(px(0.0))
-                                    .top(px((super::TOP_BAR_TAB_HEIGHT - 20.0) * 0.5))
-                                    .size(px(20.0))
                                     .invisible()
                                     .group_hover("tab", |s| s.visible())
                                     .child(
@@ -390,6 +410,8 @@ mod chrome_tests {
         let label_before = cx.debug_bounds("hover-label").unwrap();
         cx.simulate_mouse_move(target.center(), None, gpui::Modifiers::default());
         let close = cx.debug_bounds("hover-close").unwrap();
+        let circle = cx.debug_bounds("tab-close-circle").unwrap();
+        assert_eq!(circle.center().y, target.center().y);
         assert!(close.left() >= target.left());
         assert!(close.right() <= target.right());
         assert!(close.right() < label_before.left());
@@ -429,6 +451,7 @@ mod chrome_tests {
                             .map(|(id, title)| {
                                 horizontal_tab_target()
                                     .id(id)
+                                    .text_size(px(12.0))
                                     .debug_selector(move || id.into())
                                     .child(
                                         tab_identity_row()
@@ -455,6 +478,9 @@ mod chrome_tests {
                                             ),
                                     )
                             }),
+                        )
+                        .child(
+                            tab_trailing_drop_target().debug_selector(|| "trailing-drop".into()),
                         ),
                 )
         }
@@ -492,12 +518,20 @@ mod chrome_tests {
             let first = cx.debug_bounds("short-tab-surface").unwrap();
             let last = cx.debug_bounds("long-tab-surface").unwrap();
             let inset = px(super::TAB_SELECTION_INSET);
+            let drop_target = cx.debug_bounds("trailing-drop").unwrap();
+            assert_eq!(drop_target.left(), tray.right());
+            assert_eq!(drop_target.size.width, px(super::TAB_TRAILING_DROP_WIDTH));
             assert_eq!(tray.top() - root.top(), root.bottom() - tray.bottom());
             assert_eq!(first.left() - tray.left(), inset);
             assert_eq!(tray.right() - last.right(), inset);
             for surface in [first, last] {
                 assert_eq!(surface.top() - tray.top(), inset);
                 assert_eq!(tray.bottom() - surface.bottom(), inset);
+            }
+            for (target, surface) in [("short-tab", first), ("long-tab", last)] {
+                let target = cx.debug_bounds(target).unwrap();
+                assert_eq!(surface.left() - target.left(), inset);
+                assert_eq!(target.right() - surface.right(), inset);
             }
         }
     }
@@ -943,13 +977,9 @@ impl ConWorkspace {
 
                 let close_id = ElementId::Name(format!("tab-close-{}", index).into());
 
-                let close_button = div()
+                let close_button = tab_close_slot()
                     .id(ElementId::Name(format!("tab-close-slot-{index}").into()))
                     .group("tab-close-control")
-                    .absolute()
-                    .left(px(0.0))
-                    .top(px((TOP_BAR_TAB_HEIGHT - TAB_CLOSE_SIZE) * 0.5))
-                    .size(px(TAB_CLOSE_SIZE))
                     .invisible()
                     .group_hover("tab", |s| s.visible())
                     .child(tab_close_button(close_id, cx).on_click(cx.listener(
@@ -1493,11 +1523,8 @@ impl ConWorkspace {
 
                 if index + 1 == tab_count {
                     tabs_container = tabs_container.child(
-                        div()
+                        tab_trailing_drop_target()
                             .id(ElementId::Name(format!("tab-trailing-drop-{index}").into()))
-                            .w(px(12.0))
-                            .h_full()
-                            .flex_shrink_0()
                             .on_drag_move::<DraggedTab>(cx.listener(
                                 move |this, event: &gpui::DragMoveEvent<DraggedTab>, _, cx| {
                                     if event.drag(cx).origin == DraggedTabOrigin::Pane {
