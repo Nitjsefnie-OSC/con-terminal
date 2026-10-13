@@ -3,6 +3,7 @@ use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::{
     ActiveTheme, InteractiveElementExt, Sizable,
+    button::{Button, ButtonCustomVariant, ButtonVariants},
     input::{Input, InputState},
     menu::{ContextMenuExt, PopupMenuItem},
     scroll::ScrollableElement,
@@ -2243,75 +2244,83 @@ impl PaneTree {
         cx: &App,
     ) -> AnyElement {
         let theme = cx.theme();
+        let header_group: SharedString = format!("pane-header-{session_id}-{pane_id}").into();
         let title_color = if is_focused {
-            theme.foreground.opacity(0.76)
+            theme.foreground
         } else {
             theme.muted_foreground
         };
-        let btn_color = theme.foreground.opacity(0.52);
-        let btn_hover_bg = theme.foreground.opacity(0.08);
+        let btn_color = theme.muted_foreground;
+        let action_size = px(20.0);
+        let action_count = if has_splits { 2.0 } else { 1.0 };
+        let title_inset = action_size * action_count + px(6.0);
 
-        // ⛶/⛶ fullscreen toggle button — always visible
         let zoom_icon = if is_zoomed {
             "phosphor/frame-corners.svg"
         } else {
             "phosphor/corners-out.svg"
         };
         let zoom_tooltip: SharedString = if is_zoomed {
-            "Exit fullscreen".into()
+            "Restore pane".into()
         } else {
-            "Fullscreen".into()
+            "Zoom pane".into()
         };
         let toggle_zoom_cb_btn = toggle_zoom_cb.clone();
-        let zoom_btn = div()
-            .id(ElementId::Name(format!("pane-zoom-{pane_id}").into()))
-            .flex()
-            .items_center()
-            .justify_center()
-            .size(px(20.0))
-            .flex_shrink_0()
-            .rounded(px(4.0))
-            .cursor_pointer()
-            .hover(move |s| s.bg(btn_hover_bg))
-            .tooltip(move |window, cx| Tooltip::new(zoom_tooltip.clone()).build(window, cx))
-            .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
-                toggle_zoom_cb_btn(pane_id, window, cx);
-                window.prevent_default();
-                cx.stop_propagation();
-            })
-            .child(
-                svg()
-                    .path(zoom_icon)
-                    .size(mono_icon_px(theme, 11.0))
-                    .text_color(btn_color),
-            );
+        let action = |id: ElementId, label: SharedString| {
+            Button::new(id)
+                .custom(
+                    ButtonCustomVariant::new(cx)
+                        .foreground(btn_color)
+                        .color(theme.transparent)
+                        .hover(theme.foreground.opacity(0.07))
+                        .active(theme.foreground.opacity(0.12)),
+                )
+                .size(action_size)
+                .w(action_size)
+                .h(action_size)
+                .p_0()
+                .rounded(px(5.0))
+                .flex_shrink_0()
+                .tab_stop(false)
+                .accessibility_label(label.clone())
+                .tooltip(label)
+                // Title dragging/focus must not consume a control click.
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        };
+        let zoom_btn = action(
+            ElementId::Name(format!("pane-zoom-{pane_id}").into()),
+            zoom_tooltip,
+        )
+        .debug_selector(move || format!("pane-zoom-action-{pane_id}"))
+        .on_click(move |_event, window, cx| {
+            toggle_zoom_cb_btn(pane_id, window, cx);
+            cx.stop_propagation();
+        })
+        .child(
+            svg()
+                .path(zoom_icon)
+                .size(crate::ui_scale::ui_icon_px(theme, 12.0).min(px(14.0)))
+                .text_color(btn_color),
+        );
 
-        // ✕ close button — only when there are splits
         let close_btn = if has_splits {
             let close_cb_btn = close_pane_cb.clone();
-            let btn_hover_bg2 = theme.foreground.opacity(0.08);
             Some(
-                div()
-                    .id(ElementId::Name(format!("pane-close-{pane_id}").into()))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .size(px(20.0))
-                    .flex_shrink_0()
-                    .rounded(px(4.0))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(btn_hover_bg2))
-                    .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
-                        close_cb_btn(pane_id, window, cx);
-                        window.prevent_default();
-                        cx.stop_propagation();
-                    })
-                    .child(
-                        svg()
-                            .path("phosphor/x.svg")
-                            .size(mono_icon_px(theme, 11.0))
-                            .text_color(btn_color),
-                    ),
+                action(
+                    ElementId::Name(format!("pane-close-{pane_id}").into()),
+                    "Close pane".into(),
+                )
+                .debug_selector(move || format!("pane-close-action-{pane_id}"))
+                .on_click(move |_event, window, cx| {
+                    close_cb_btn(pane_id, window, cx);
+                    cx.stop_propagation();
+                })
+                .child(
+                    svg()
+                        .path("phosphor/x.svg")
+                        .size(crate::ui_scale::ui_icon_px(theme, 11.0).min(px(14.0)))
+                        .text_color(btn_color),
+                ),
             )
         } else {
             None
@@ -2323,8 +2332,13 @@ impl PaneTree {
         let drag_label: SharedString = title.clone().into();
 
         let title_el = div()
-            .flex_1()
+            .id(ElementId::Name(
+                format!("pane-title-label-{pane_id}").into(),
+            ))
+            .debug_selector(move || format!("pane-title-label-{pane_id}"))
+            .w_full()
             .min_w_0()
+            .px(title_inset)
             .truncate()
             .text_size(px(12.0))
             .line_height(px(16.0))
@@ -2332,6 +2346,10 @@ impl PaneTree {
             .font_weight(FontWeight::MEDIUM)
             .text_color(title_color)
             .text_center()
+            .tooltip({
+                let title = title.clone();
+                move |window, cx| Tooltip::new(title.clone()).build(window, cx)
+            })
             .child(SharedString::from(title));
         let focus_cb_bar = focus_pane_cb.clone();
         let dragged = DraggedTab {
@@ -2345,15 +2363,21 @@ impl PaneTree {
         // The whole title bar is draggable. The visible pane drag preview is
         // rendered by Workspace, centred at the live cursor position.
         let bar_bg = Self::pane_chrome_bg(theme, is_focused, tab_accent_inactive_alpha);
-        let mut bar = div()
+        let bar = div()
             .id(ElementId::Name(format!("pane-title-bar-{pane_id}").into()))
+            .debug_selector(move || format!("pane-title-bar-{pane_id}"))
+            .group(header_group.clone())
+            .relative()
             .flex()
             .flex_row()
             .items_center()
             .h(px(24.0))
             .w_full()
-            .px(px(6.0))
-            .bg(bar_bg)
+            .bg(if is_focused {
+                bar_bg.blend(theme.foreground.opacity(0.025))
+            } else {
+                bar_bg
+            })
             .cursor_grab()
             .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
                 focus_cb_bar(pane_id, window, cx);
@@ -2366,16 +2390,20 @@ impl PaneTree {
                 },
             );
 
-        // Reserve the same leading width as the trailing zoom button so the
-        // centered title does not drift when the active-pane dot is absent.
-        bar = bar.child(div().flex_shrink_0().w(px(20.0)));
-        bar = bar.child(title_el).child(zoom_btn);
-
+        let mut actions = div()
+            .absolute()
+            .right(px(4.0))
+            .top(px(2.0))
+            .flex()
+            .items_center()
+            .h(action_size)
+            .invisible()
+            .group_hover(header_group, |style| style.visible())
+            .child(zoom_btn);
         if let Some(close) = close_btn {
-            bar = bar.child(close);
+            actions = actions.child(close);
         }
-
-        bar.into_any_element()
+        bar.child(title_el).child(actions).into_any_element()
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -3492,6 +3520,159 @@ impl PaneTree {
 mod tests {
     use super::*;
     use ::core::prelude::v1::test;
+
+    struct PaneHeaderTestView {
+        width: f32,
+        focused: bool,
+        zoomed: bool,
+        focused_clicks: usize,
+        close_clicks: usize,
+        zoom_clicks: usize,
+    }
+
+    impl Render for PaneHeaderTestView {
+        fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let handle = cx.entity();
+            let close = handle.clone();
+            let zoom = handle.clone();
+            div()
+                .w(px(self.width))
+                .child(PaneTree::render_pane_title_bar(
+                    0,
+                    0,
+                    "项目 / a long shell title that must not move the controls".into(),
+                    self.focused,
+                    true,
+                    self.zoomed,
+                    None,
+                    0.08,
+                    std::sync::Arc::new(move |_, _, cx| {
+                        close.update(cx, |view, _| view.close_clicks += 1);
+                    }),
+                    std::sync::Arc::new(move |_, _, cx| {
+                        zoom.update(cx, |view, _| view.zoom_clicks += 1);
+                    }),
+                    std::sync::Arc::new(move |_, _, cx| {
+                        handle.update(cx, |view, _| view.focused_clicks += 1);
+                    }),
+                    cx,
+                ))
+        }
+    }
+
+    #[gpui::test]
+    fn pane_header_keeps_center_and_control_clearance_through_focus_and_zoom(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(gpui_component::init);
+        let (view, cx) = cx.add_window_view(|_, _| PaneHeaderTestView {
+            width: 400.0,
+            focused: true,
+            zoomed: false,
+            focused_clicks: 0,
+            close_clicks: 0,
+            zoom_clicks: 0,
+        });
+        use gpui_component::ThemeMode;
+        for (mode, width, focused, zoomed) in [
+            (ThemeMode::Light, 400.0, true, false),
+            (ThemeMode::Light, 160.0, false, true),
+            (ThemeMode::Dark, 400.0, true, false),
+            (ThemeMode::Dark, 160.0, false, true),
+        ] {
+            cx.update(|window, cx| {
+                gpui_component::Theme::change(mode, Some(window), cx);
+            });
+            view.update(cx, |view, cx| {
+                view.width = width;
+                view.focused = focused;
+                view.zoomed = zoomed;
+                cx.notify();
+            });
+            cx.run_until_parked();
+            let bar = cx.debug_bounds("pane-title-bar-0").unwrap();
+            cx.simulate_mouse_move(bar.center(), MouseButton::Left, Modifiers::default());
+            cx.run_until_parked();
+            let label = cx.debug_bounds("pane-title-label-0").unwrap();
+            let zoom = cx.debug_bounds("pane-zoom-action-0").unwrap();
+            let close = cx.debug_bounds("pane-close-action-0").unwrap();
+            assert_eq!(bar.size.height, px(24.0));
+            assert_eq!(label.center().x, bar.center().x);
+            assert_eq!(label.center().y, bar.center().y);
+            assert_eq!(zoom.center().y, bar.center().y);
+            assert_eq!(close.center().y, bar.center().y);
+            assert_eq!(close.size, size(px(20.0), px(20.0)));
+            assert_eq!(bar.right() - close.right(), px(4.0));
+            assert_eq!(zoom.right(), close.left());
+            cx.simulate_click(close.center(), Modifiers::default());
+            cx.simulate_click(zoom.center(), Modifiers::default());
+        }
+        cx.update(|_, cx| {
+            let view = view.read(cx);
+            assert_eq!(view.close_clicks, 4);
+            assert_eq!(view.zoom_clicks, 4);
+            assert_eq!(view.focused_clicks, 0);
+        });
+        let label = cx.debug_bounds("pane-title-label-0").unwrap();
+        cx.simulate_click(label.center(), Modifiers::default());
+        cx.update(|_, cx| assert_eq!(view.read(cx).focused_clicks, 1));
+    }
+
+    #[derive(Default)]
+    struct MultiplePaneHeadersTestView {
+        closed: Vec<PaneId>,
+        focused: Vec<PaneId>,
+    }
+
+    impl Render for MultiplePaneHeadersTestView {
+        fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            let mut row = div().flex().w(px(500.0));
+            for pane_id in 0..2 {
+                let close = cx.entity();
+                let focus = cx.entity();
+                row = row.child(div().w(px(250.0)).child(PaneTree::render_pane_title_bar(
+                    pane_id,
+                    0,
+                    format!("Pane {pane_id}"),
+                    pane_id == 0,
+                    true,
+                    false,
+                    None,
+                    0.08,
+                    std::sync::Arc::new(move |id, _, cx| {
+                        close.update(cx, |view, _| view.closed.push(id));
+                    }),
+                    std::sync::Arc::new(|_, _, _| {}),
+                    std::sync::Arc::new(move |id, _, cx| {
+                        focus.update(cx, |view, _| view.focused.push(id));
+                    }),
+                    cx,
+                )));
+            }
+            row
+        }
+    }
+
+    #[gpui::test]
+    fn pane_header_hover_controls_are_scoped_to_each_pane(cx: &mut gpui::TestAppContext) {
+        cx.update(gpui_component::init);
+        let (view, cx) = cx.add_window_view(|_, _| MultiplePaneHeadersTestView::default());
+        cx.run_until_parked();
+        for (header_selector, close_selector) in [
+            ("pane-title-bar-0", "pane-close-action-0"),
+            ("pane-title-bar-1", "pane-close-action-1"),
+        ] {
+            let header = cx.debug_bounds(header_selector).unwrap();
+            cx.simulate_mouse_move(header.center(), MouseButton::Left, Modifiers::default());
+            cx.run_until_parked();
+            let close = cx.debug_bounds(close_selector).unwrap();
+            cx.simulate_click(close.center(), Modifiers::default());
+        }
+        cx.update(|_, cx| {
+            assert_eq!(view.read(cx).closed, [0, 1]);
+            assert!(view.read(cx).focused.is_empty());
+        });
+    }
 
     struct EditorBarTestView(Entity<EditorView>, bool);
 
