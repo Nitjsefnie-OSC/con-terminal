@@ -30,3 +30,4 @@ jobs:
           done
           bash scripts/macos/test-stapler-retry.sh
           bash scripts/macos/test-prebuilt-app.sh
+          bash scripts/macos/test-dependencies.sh

@@ -34,6 +34,14 @@ no explicit prebuilt archive is provided. Windows/Linux workflows do not change.
 
 ## Verification and Recovery
 
+The same Intel run spent 31 minutes 47 seconds in dependency setup. It already
+had CMake 4.4.2; `brew update` followed by `brew install cmake` upgraded to 4.4.4
+and compiled it from source for 29 minutes because no Intel bottle was available.
+Reuse the installed tool, log its version, and require a bottle only when it is
+missing. Four shell fixtures cover reuse, missing-tool installation, unavailable
+bottles and an installed tool that fails its version check. Do not attribute this
+setup delay to Zig (18 seconds in that run) or Apple notarization.
+
 Native macOS fixtures exercise archive extraction, symlink/executable-bit
 preservation, metadata and architecture mismatch, and missing CLI/link/framework.
 They use an existing OS executable slice; no cross-compilation occurs. Bounded

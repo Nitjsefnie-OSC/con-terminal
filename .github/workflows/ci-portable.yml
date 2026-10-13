@@ -152,6 +152,7 @@ jobs:
             bash -n "$script"
           done
           bash scripts/macos/test-stapler-retry.sh
+          bash scripts/macos/test-dependencies.sh
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install Zig 0.16.0

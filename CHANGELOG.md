@@ -15,6 +15,9 @@ con is still pre-release, so entries may group related beta work while the produ
   Intel compilation remains native, and both packages must pass all existing
   signature, ticket and installer checks before publication.
   _(PR [#475](https://github.com/nowledge-co/con-terminal/pull/475) by [@wey-gu](https://github.com/wey-gu))_
+- macOS release builds reuse the runner's installed CMake instead of upgrading
+  and compiling it from source during setup.
+  _(PR [#475](https://github.com/nowledge-co/con-terminal/pull/475) by [@wey-gu](https://github.com/wey-gu))_
 
 ## `v0.1.0-beta.131` - 2026-10-13
 

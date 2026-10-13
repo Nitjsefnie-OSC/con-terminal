@@ -32,6 +32,7 @@ jobs:
         run: |
           bash scripts/macos/test-stapler-retry.sh
           bash scripts/macos/test-prebuilt-app.sh
+          bash scripts/macos/test-dependencies.sh
 
       - name: Derive release metadata
         id: meta
@@ -50,10 +51,7 @@ jobs:
 
       - name: Install macOS dependencies
         shell: bash
-        run: |
-          set -euo pipefail
-          brew update
-          brew install cmake
+        run: bash scripts/macos/prepare-dependencies.sh
 
       - name: Install Zig 0.16.0
         shell: bash

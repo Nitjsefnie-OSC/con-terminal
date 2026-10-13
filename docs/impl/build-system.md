@@ -2,6 +2,11 @@
 
 ## macOS Release Handoff
 
+Dependency setup reuses the runner's installed CMake and logs its version.
+If it is absent, Homebrew must supply a bottle without auto-update or incidental
+upgrade. An unavailable bottle fails rather than compiling CMake from source.
+Zig remains explicitly pinned to the project version.
+
 The release workflow compiles ARM and Intel app bundles on their respective
 native runners. Signing, notarization, stapling and DMG creation run in separate
 ARM jobs. Intel binaries are not cross-compiled; Rosetta is used only to execute
