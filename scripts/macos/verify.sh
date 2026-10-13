@@ -41,8 +41,8 @@ if [[ -f "$CON_DMG_PATH" ]]; then
 fi
 
 if [[ "${CON_ALLOW_ADHOC_SIGNING:-0}" != "1" && "${CON_SKIP_NOTARIZATION:-0}" != "1" ]] && have_notary_credentials; then
-  xcrun stapler validate "$CON_APP_BUNDLE_PATH"
-  xcrun stapler validate "$CON_DMG_PATH"
+  run_stapler validate "$CON_APP_BUNDLE_PATH"
+  run_stapler validate "$CON_DMG_PATH"
 fi
 
 log "Verification complete"

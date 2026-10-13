@@ -151,6 +151,7 @@ jobs:
           for script in scripts/macos/*.sh scripts/sparkle/*.sh; do
             bash -n "$script"
           done
+          bash scripts/macos/test-stapler-retry.sh
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - name: Install Zig 0.16.0

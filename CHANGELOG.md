@@ -13,6 +13,16 @@ con is still pre-release, so entries may group related beta work while the produ
 - Split-pane titles stay centered in narrow and wide panes. Zoom and close
   controls appear on hover without moving the title, with clearer labels and
   consistent button spacing in light and dark themes.
+  _(PR [#473](https://github.com/nowledge-co/con-terminal/pull/473) by [@wey-gu](https://github.com/wey-gu))_
+
+### Fixed
+
+**macOS releases**
+
+- Packaging retries interrupted Apple ticket downloads before giving up.
+  Both the app and disk image must still pass signature and notarization-ticket
+  checks before publication.
+  _(PR [#473](https://github.com/nowledge-co/con-terminal/pull/473) by [@wey-gu](https://github.com/wey-gu))_
 
 ## `v0.1.0-beta.130` - 2026-10-13
 

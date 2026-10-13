@@ -93,6 +93,10 @@ curl -fsSL https://con-releases.nowledge.co/install.ps1 >/dev/null
   not change its prerelease/channel semantics.
 - Record a workflow or release incident in `postmortem/` when the failure
   exposes a new invariant or requires manual recovery.
+- An accepted notarization is not a completed package. `stapler` must download
+  and attach its ticket, then validation must succeed. The macOS scripts retry
+  ticket-service exit 68 up to four attempts with 10/20/40-second delays; other
+  failures stop immediately. Do not bypass ticket validation to recover a draft.
 
 ## Common mistakes
 

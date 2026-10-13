@@ -19,6 +19,30 @@ require_cmd() {
   command -v "$cmd" >/dev/null 2>&1 || fail "missing required command: $cmd"
 }
 
+# EX_NOHOST (68) includes transient ticket-service/network responses. Retry
+# only that status; malformed, revoked, and invalid tickets remain fatal.
+run_stapler() {
+  local attempt=1
+  local max_attempts=4
+  local delay=10
+  local status
+
+  while true; do
+    if xcrun stapler "$@"; then
+      return 0
+    else
+      status=$?
+    fi
+    if [[ "$status" != "68" || "$attempt" -ge "$max_attempts" ]]; then
+      return "$status"
+    fi
+    log "stapler failed with exit status $status; retrying in ${delay}s (${attempt}/${max_attempts})"
+    sleep "$delay"
+    delay=$((delay * 2))
+    attempt=$((attempt + 1))
+  done
+}
+
 decode_base64_to_file() {
   local output_path="$1"
 

@@ -145,7 +145,7 @@ notarytool_submit "$CON_APP_ZIP_PATH"
 
 if [[ "${CON_SKIP_NOTARIZATION:-0}" != "1" ]] && have_notary_credentials; then
   log "Stapling app bundle"
-  xcrun stapler staple -v "$CON_APP_BUNDLE_PATH"
+  run_stapler staple -v "$CON_APP_BUNDLE_PATH"
 fi
 
 package_dmg
@@ -154,7 +154,7 @@ notarytool_submit "$CON_DMG_PATH"
 
 if [[ "${CON_SKIP_NOTARIZATION:-0}" != "1" ]] && have_notary_credentials; then
   log "Stapling dmg"
-  xcrun stapler staple -v "$CON_DMG_PATH"
+  run_stapler staple -v "$CON_DMG_PATH"
 fi
 
 "$SCRIPT_DIR/verify.sh"
