@@ -13,6 +13,10 @@ con is still pre-release, so entries may group related beta work while the produ
 - Split-pane titles stay centered in narrow and wide panes. Zoom and close
   controls appear on hover without moving the title, with clearer labels and
   consistent button spacing in light and dark themes.
+- Splitting, closing and zooming panes move their boundaries smoothly without
+  stretching terminal text or repeatedly resizing the terminal grid. Rapid
+  reversals keep the current position; dragging dividers and Reduce Motion
+  use immediate layout changes.
 
 ## `v0.1.0-beta.130` - 2026-10-13
 

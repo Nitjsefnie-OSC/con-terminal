@@ -106,6 +106,12 @@ If a cached view causes overlap, clipping, or stale layout, the cache boundary i
 
 ### GPUI interaction gotchas
 
+- Do not return a child's layout ID from a presentation wrapper and then call
+  `prepaint_as_root` on that same child. The node is still parented in Taffy;
+  GPUI's absolute-origin lookup can count the parent offset again. Give the
+  wrapper its own layout node and lay out the child as an independent root.
+  Test hitbox positions against visible geometry, not merely whether a click
+  at the hitbox's reported (possibly wrong) position invokes its callback.
 - Caption `.occlude()` targets can block an ancestor's wheel listener. Forward
   wheel events from the real occluded target to its shared scroll handle, and
   include occlusion in the interaction test fixture. A plain layout fixture can

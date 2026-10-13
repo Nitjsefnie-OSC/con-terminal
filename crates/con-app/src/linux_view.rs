@@ -1827,6 +1827,10 @@ impl GhosttyView {
     }
 }
 
+pub(crate) fn supports_pane_presentation_motion() -> bool {
+    true
+}
+
 impl Focusable for GhosttyView {
     fn focus_handle(&self, _cx: &App) -> FocusHandle {
         self.focus_handle.clone()

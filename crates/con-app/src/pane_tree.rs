@@ -11,9 +11,16 @@ use gpui_component::{
 };
 
 use crate::editor_view::EditorView;
+use crate::pane_presentation::{Axis, DividerPresentation, Layout, PaneMotion, PanePresentation};
 use crate::sidebar::{DraggedTab, DraggedTabOrigin};
 use crate::terminal_pane::TerminalPane;
 use crate::ui_scale::{mono_icon_px, mono_px};
+
+#[derive(Clone)]
+pub(crate) struct PaneRenderPresentation {
+    pub motion: PaneMotion,
+    pub background: Hsla,
+}
 
 const RESTORED_SCREEN_TEXT_MAX_LINES: usize = 600;
 const RESTORED_SCREEN_TEXT_MAX_BYTES: usize = 128 * 1024;
@@ -270,6 +277,87 @@ pub struct PaneTree {
 }
 
 impl PaneTree {
+    pub(crate) fn presentation_key(&self, cx: &App, hide_header: bool) -> u64 {
+        use std::hash::{Hash, Hasher};
+        fn hash_node(node: &PaneNode, cx: &App, hash: &mut impl Hasher) {
+            match node {
+                PaneNode::Leaf { id, content } => {
+                    id.hash(hash);
+                    PaneTree::presentation_content_key(content, cx).hash(hash);
+                }
+                PaneNode::Split {
+                    split_id,
+                    direction,
+                    ratio,
+                    first,
+                    second,
+                } => {
+                    split_id.hash(hash);
+                    (*direction as u8).hash(hash);
+                    ratio.to_bits().hash(hash);
+                    hash_node(first, cx, hash);
+                    hash_node(second, cx, hash);
+                }
+            }
+        }
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        hide_header.hash(&mut hash);
+        hash_node(&self.root, cx, &mut hash);
+        hash.finish()
+    }
+
+    fn presentation_content_key(content: &PaneContent, cx: &App) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        match content {
+            PaneContent::Editor { view } => {
+                view.entity_id().hash(&mut hash);
+                (view.read(cx).tab_count() > 0).hash(&mut hash);
+            }
+            PaneContent::Terminal {
+                surfaces,
+                active_surface_id,
+            } => {
+                active_surface_id.hash(&mut hash);
+                surfaces.len().hash(&mut hash);
+                if let Some(surface) = Self::active_surface(surfaces, *active_surface_id) {
+                    surface.terminal.entity_id().hash(&mut hash);
+                    surface.owner.is_some().hash(&mut hash);
+                    surface.title.is_some().hash(&mut hash);
+                }
+            }
+        }
+        hash.finish()
+    }
+
+    pub(crate) fn presentation_layout(&self, cx: &App) -> Layout {
+        fn node_layout(node: &PaneNode, cx: &App) -> Layout {
+            match node {
+                PaneNode::Leaf { id, content } => Layout::Pane {
+                    id: *id,
+                    content: PaneTree::presentation_content_key(content, cx),
+                },
+                PaneNode::Split {
+                    split_id,
+                    direction,
+                    ratio,
+                    first,
+                    second,
+                } => Layout::Split {
+                    id: *split_id,
+                    axis: match direction {
+                        SplitDirection::Horizontal => Axis::Horizontal,
+                        SplitDirection::Vertical => Axis::Vertical,
+                    },
+                    ratio: *ratio,
+                    first: Box::new(node_layout(first, cx)),
+                    second: Box::new(node_layout(second, cx)),
+                },
+            }
+        }
+        node_layout(&self.root, cx)
+    }
+
     pub fn new(terminal: TerminalPane) -> Self {
         Self::new_with_surface_options(terminal, SurfaceCreateOptions::plain(None))
     }
@@ -1118,6 +1206,7 @@ impl PaneTree {
         tab_accent_color: Option<con_core::session::TabAccentColor>,
         tab_accent_inactive_alpha: f32,
         hide_pane_title_bar: bool,
+        presentation: &PaneRenderPresentation,
         cx: &App,
     ) -> AnyElement {
         let focus_surface_cb = std::sync::Arc::new(focus_surface_cb);
@@ -1149,6 +1238,7 @@ impl PaneTree {
                 tab_accent_color,
                 tab_accent_inactive_alpha,
                 hide_pane_title_bar,
+                presentation,
                 cx,
             )
         {
@@ -1175,6 +1265,7 @@ impl PaneTree {
             tab_accent_color,
             tab_accent_inactive_alpha,
             hide_pane_title_bar,
+            presentation,
             cx,
         )
     }
@@ -1938,6 +2029,7 @@ impl PaneTree {
         tab_accent_color: Option<con_core::session::TabAccentColor>,
         tab_accent_inactive_alpha: f32,
         hide_pane_title_bar: bool,
+        presentation: &PaneRenderPresentation,
         cx: &App,
     ) -> AnyElement {
         match node {
@@ -1960,6 +2052,7 @@ impl PaneTree {
                 tab_accent_color,
                 tab_accent_inactive_alpha,
                 hide_pane_title_bar,
+                presentation,
                 cx,
             ),
             PaneNode::Split {
@@ -2011,6 +2104,7 @@ impl PaneTree {
                     tab_accent_color,
                     tab_accent_inactive_alpha,
                     hide_pane_title_bar,
+                    presentation,
                     cx,
                 );
                 let second_el = Self::render_node(
@@ -2033,6 +2127,7 @@ impl PaneTree {
                     tab_accent_color,
                     tab_accent_inactive_alpha,
                     hide_pane_title_bar,
+                    presentation,
                     cx,
                 );
 
@@ -2103,8 +2198,7 @@ impl PaneTree {
                     let mut d = div()
                         .flex_grow_1()
                         .flex_shrink_1()
-                        .flex_basis(relative(basis))
-                        .overflow_hidden();
+                        .flex_basis(relative(basis));
                     d = match dir {
                         SplitDirection::Horizontal => d.min_w_0().h_full(),
                         SplitDirection::Vertical => d.min_h_0().w_full(),
@@ -2123,7 +2217,15 @@ impl PaneTree {
 
                 container
                     .child(first_sized)
-                    .child(divider)
+                    .child(DividerPresentation {
+                        motion: presentation.motion.clone(),
+                        split: sid,
+                        axis: match dir {
+                            SplitDirection::Horizontal => Axis::Horizontal,
+                            SplitDirection::Vertical => Axis::Vertical,
+                        },
+                        child: divider.into_any_element(),
+                    })
                     .child(second_sized)
                     .into_any_element()
             }
@@ -2148,6 +2250,7 @@ impl PaneTree {
         tab_accent_color: Option<con_core::session::TabAccentColor>,
         tab_accent_inactive_alpha: f32,
         hide_pane_title_bar: bool,
+        presentation: &PaneRenderPresentation,
         cx: &App,
     ) -> Option<AnyElement> {
         match node {
@@ -2170,6 +2273,7 @@ impl PaneTree {
                 tab_accent_color,
                 tab_accent_inactive_alpha,
                 hide_pane_title_bar,
+                presentation,
                 cx,
             )),
             PaneNode::Leaf { .. } => None,
@@ -2190,6 +2294,7 @@ impl PaneTree {
                 tab_accent_color,
                 tab_accent_inactive_alpha,
                 hide_pane_title_bar,
+                presentation,
                 cx,
             )
             .or_else(|| {
@@ -2210,6 +2315,7 @@ impl PaneTree {
                     tab_accent_color,
                     tab_accent_inactive_alpha,
                     hide_pane_title_bar,
+                    presentation,
                     cx,
                 )
             }),
@@ -2753,6 +2859,7 @@ impl PaneTree {
         tab_accent_color: Option<con_core::session::TabAccentColor>,
         tab_accent_inactive_alpha: f32,
         hide_pane_title_bar: bool,
+        presentation: &PaneRenderPresentation,
         cx: &App,
     ) -> AnyElement {
         // ── Editor pane — file tabs and pane controls share one row ───────
@@ -2765,7 +2872,7 @@ impl PaneTree {
             let close_pane_cb_menu = close_pane_cb.clone();
             let toggle_zoom_cb_menu = toggle_zoom_cb.clone();
 
-            let mut col = div()
+            let col = div()
                 .id(ElementId::Name(format!("editor-pane-{pane_id}").into()))
                 .flex()
                 .flex_col()
@@ -2792,8 +2899,9 @@ impl PaneTree {
 
             // No files open → no chrome row at all; the editor body renders
             // its centered "No file open" empty state (pre-merge behavior).
+            let mut header = div().flex().flex_col().w_full();
             if view.read(cx).tab_count() > 0 {
-                col = col.child(Self::render_editor_merged_bar(
+                header = header.child(Self::render_editor_merged_bar(
                     pane_id,
                     session_id,
                     view,
@@ -2809,14 +2917,20 @@ impl PaneTree {
                 ));
             }
 
-            col = col.child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .overflow_hidden()
-                    .child(view.clone()),
-            );
-            return col.into_any_element();
+            return col
+                .child(PanePresentation {
+                    motion: presentation.motion.clone(),
+                    pane: pane_id,
+                    header: header.into_any_element(),
+                    body: div()
+                        .size_full()
+                        .overflow_hidden()
+                        .child(view.clone())
+                        .into_any_element(),
+                    terminal: None,
+                    background: presentation.background,
+                })
+                .into_any_element();
         }
 
         // ── Terminal pane (existing logic) ────────────────────────────────
@@ -2834,7 +2948,15 @@ impl PaneTree {
 
         // No splits → no title bar, no surface strip (single-pane layout)
         if !tree_has_splits && !show_surface_strip {
-            return div().size_full().child(terminal).into_any_element();
+            return PanePresentation {
+                motion: presentation.motion.clone(),
+                pane: pane_id,
+                header: div().w_full().h(px(0.0)).into_any_element(),
+                body: div().size_full().child(terminal).into_any_element(),
+                terminal: Some(active.terminal.clone()),
+                background: presentation.background,
+            }
+            .into_any_element();
         }
 
         let inactive_terminals = surfaces
@@ -2842,7 +2964,11 @@ impl PaneTree {
             .filter(|surface| surface.id != active_surface_id)
             .map(|surface| surface.terminal.clone())
             .collect::<Vec<_>>();
-        let mut terminal_host = div().flex_1().min_h_0().overflow_hidden().child(terminal);
+        let mut terminal_host = div()
+            .size_full()
+            .min_h_0()
+            .overflow_hidden()
+            .child(terminal);
         if !inactive_terminals.is_empty() {
             terminal_host = terminal_host.on_children_prepainted(move |bounds_list, window, cx| {
                 let Some(bounds) = bounds_list.first().copied() else {
@@ -2854,7 +2980,7 @@ impl PaneTree {
             });
         }
 
-        let mut col = div().flex().flex_col().size_full();
+        let mut col = div().flex().flex_col().w_full();
 
         // Title bar — only when there are 2+ panes and not hidden by config
         if tree_has_splits && !hide_pane_title_bar {
@@ -3109,7 +3235,15 @@ impl PaneTree {
             col = col.child(strip);
         }
 
-        col.child(terminal_host).into_any_element()
+        PanePresentation {
+            motion: presentation.motion.clone(),
+            pane: pane_id,
+            header: col.into_any_element(),
+            body: terminal_host.into_any_element(),
+            terminal: Some(active.terminal.clone()),
+            background: presentation.background,
+        }
+        .into_any_element()
     }
 
     fn find_focused_pane(node: &PaneNode, window: &Window, cx: &App) -> Option<PaneId> {

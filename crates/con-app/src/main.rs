@@ -74,6 +74,7 @@ mod keycaps;
 mod model_registry;
 mod motion;
 mod mouse_sequence;
+mod pane_presentation;
 mod pane_tree;
 mod process_name;
 mod reduced_motion;

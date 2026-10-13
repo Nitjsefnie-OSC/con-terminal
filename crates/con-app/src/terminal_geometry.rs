@@ -2,7 +2,6 @@ use gpui::{Bounds, Pixels, point, px};
 
 /// Match the pinned GPUI renderer's endpoint snapping (half ties toward zero).
 /// Native hosts must occupy the same device pixels as GPUI's clips and dividers.
-#[cfg(any(target_os = "macos", test))]
 pub fn snap_terminal_bounds(bounds: Bounds<Pixels>, scale: f32) -> Bounds<Pixels> {
     let scale = scale.max(f32::EPSILON);
     let snap = |value: Pixels| {

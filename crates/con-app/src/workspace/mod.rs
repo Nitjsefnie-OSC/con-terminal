@@ -210,6 +210,7 @@ pub struct ConWorkspace {
     agent_panel_width: f32,
     tab_strip_motion: MotionValue,
     tab_slot_motion: tab_motion::TabSlotMotion,
+    pane_motion: crate::pane_presentation::PaneMotion,
     input_bar_visible: bool,
     input_bar_motion: SidebarMotion,
     /// Tracks whether a modal was open on the last render, so we can
