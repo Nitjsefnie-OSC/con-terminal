@@ -29,7 +29,9 @@ jobs:
 
       - name: Test ticket-service retry policy
         shell: bash
-        run: bash scripts/macos/test-stapler-retry.sh
+        run: |
+          bash scripts/macos/test-stapler-retry.sh
+          bash scripts/macos/test-prebuilt-app.sh
 
       - name: Derive release metadata
         id: meta
@@ -94,15 +96,7 @@ jobs:
         shell: bash
         run: ./scripts/sparkle/download.sh
 
-      - name: Import Developer ID certificate
-        shell: bash
-        env:
-          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
-        run: ./scripts/macos/import-certificate.sh
-
-      - name: Build, sign, notarize, and package
+      - name: Build native app bundle
         shell: bash
         env:
           CON_CHANNEL: ${{ steps.meta.outputs.channel }}
@@ -110,6 +104,76 @@ jobs:
           CON_BUILD_NUMBER: ${{ github.run_number }}
           CON_ARCH: ${{ matrix.arch }}
           CON_RUST_TARGET: ${{ matrix.rust_target }}
+          CON_SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
+        run: |
+          set -euo pipefail
+          ./scripts/macos/build-app.sh
+          source ./scripts/macos/common.sh
+          setup_release_env
+          "$CON_APP_BUNDLE_PATH/Contents/MacOS/con-cli" --help >/dev/null
+          lipo -verify_arch "$CON_ARCH" "$CON_APP_BUNDLE_PATH/Contents/MacOS/con"
+          ditto -c -k --keepParent "$CON_APP_BUNDLE_PATH" "$RUNNER_TEMP/native-app.zip"
+
+      - name: Retain native bundle for packaging
+        uses: actions/upload-artifact@v5
+        with:
+          name: native-app-${{ matrix.arch }}
+          path: ${{ runner.temp }}/native-app.zip
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    name: Package ${{ matrix.arch }}
+    needs: build
+    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x86_64]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/download-artifact@v5
+        with:
+          name: native-app-${{ matrix.arch }}
+          path: native-bundle
+
+      - name: Derive release metadata
+        id: meta
+        shell: bash
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          channel="stable"
+          case "$version" in
+            *-beta.*) channel="beta" ;;
+            *-dev.*) channel="dev" ;;
+          esac
+          echo "version=$version" >>"$GITHUB_OUTPUT"
+          echo "channel=$channel" >>"$GITHUB_OUTPUT"
+
+      - name: Prepare Intel CLI validation on Apple Silicon
+        if: matrix.arch == 'x86_64'
+        run: /usr/sbin/softwareupdate --install-rosetta --agree-to-license
+
+      - name: Test ticket-service retry policy
+        run: |
+          bash scripts/macos/test-stapler-retry.sh
+          bash scripts/macos/test-prebuilt-app.sh
+
+      - name: Import Developer ID certificate
+        env:
+          APPLE_CERTIFICATE_P12_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_KEYCHAIN_PASSWORD: ${{ secrets.APPLE_KEYCHAIN_PASSWORD }}
+        run: ./scripts/macos/import-certificate.sh
+
+      - name: Sign, notarize, and package native bundle
+        env:
+          CON_CHANNEL: ${{ steps.meta.outputs.channel }}
+          CON_APP_VERSION: ${{ steps.meta.outputs.version }}
+          CON_BUILD_NUMBER: ${{ github.run_number }}
+          CON_ARCH: ${{ matrix.arch }}
+          CON_PREBUILT_APP_ARCHIVE: ${{ github.workspace }}/native-bundle/native-app.zip
           CON_REQUIRE_NOTARIZATION: "1"
           CON_SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -125,7 +189,6 @@ jobs:
           CON_APP_VERSION: ${{ steps.meta.outputs.version }}
           CON_BUILD_NUMBER: ${{ github.run_number }}
           CON_ARCH: ${{ matrix.arch }}
-          CON_RUST_TARGET: ${{ matrix.rust_target }}
           CON_SPARKLE_PUBLIC_ED_KEY: ${{ secrets.SPARKLE_PUBLIC_ED_KEY }}
         run: |
           set -euo pipefail
@@ -147,13 +210,14 @@ jobs:
   publish:
     name: Publish GitHub release
     runs-on: ubuntu-latest
-    needs: build
+    needs: package
 
     steps:
       - uses: actions/checkout@v5
 
       - uses: actions/download-artifact@v5
         with:
+          pattern: macos-*
           path: release-artifacts
 
       - name: Derive release metadata
@@ -273,6 +337,7 @@ jobs:
         if: steps.meta.outputs.channel != 'dev' && steps.sparkle.outputs.available == 'true'
         uses: actions/download-artifact@v5
         with:
+          pattern: macos-*
           path: release-artifacts
 
       - name: Checkout gh-pages
@@ -409,6 +474,7 @@ jobs:
         if: steps.meta.outputs.channel != 'dev'
         uses: actions/download-artifact@v5
         with:
+          pattern: macos-*
           path: release-artifacts
 
       - name: Update cask formula

@@ -1,5 +1,24 @@
 # Implementation: Build System
 
+## macOS Release Handoff
+
+The release workflow compiles ARM and Intel app bundles on their respective
+native runners. Signing, notarization, stapling and DMG creation run in separate
+ARM jobs. Intel binaries are not cross-compiled; Rosetta is used only to execute
+the packaged Intel companion CLI's smoke check.
+
+`scripts/macos/release.sh` normally builds locally as before. CI supplies
+`CON_PREBUILT_APP_ARCHIVE`, a same-workflow native bundle archive. Preparation
+checks channel, bundle ID, marketing/build version, both binary architectures,
+CLI compatibility symlink and Sparkle presence before replacing the destination.
+Signing and all release gates remain required. Internal archives never become
+GitHub release assets. Packaging can be retried independently while its native
+bundle artifact is retained.
+
+The split follows repeated Intel-runner ticket-download failures despite
+accepted notarization; it does not establish the cause of the network fault.
+See [the incident report](../../postmortem/2026-10-14-macos-packaging-handoff.md).
+
 ## Overview
 
 con is a Cargo workspace with platform terminal backends:

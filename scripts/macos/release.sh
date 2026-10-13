@@ -14,7 +14,7 @@ require_cmd hdiutil
 require_cmd rsync
 require_cmd shasum
 
-"$SCRIPT_DIR/build-app.sh"
+"$SCRIPT_DIR/prepare-app.sh"
 
 sign_identity_value="$(signing_identity)"
 

@@ -18,6 +18,12 @@ the source of truth; do not treat a green build on one platform as a release.
   for dev, and the project stable tag when stable is explicitly approved.
 - A tag push starts the macOS, Linux, Windows, and Flatpak workflows. Platform
   jobs create or update one GitHub draft release and upload their own assets.
+- macOS binaries build on native ARM/Intel runners. Both bundles then transfer
+  to separate ARM packaging jobs for signing, notarization, and ticket stapling.
+  The transfer archive preserves executable bits and symlinks; metadata and
+  binary architectures are checked before signing. Intel CLI smoke verification
+  on ARM uses Rosetta, not a cross-build. Only `macos-*` finalized artifacts may
+  be downloaded by publication jobs; `native-app-*` archives are internal.
 - A release is public only after all required platform assets and release-gate
   checks pass. Installers and updaters must never consume a draft.
 - Never delete and recreate a tag to repair a release. Fix the workflow or
@@ -89,6 +95,10 @@ curl -fsSL https://con-releases.nowledge.co/install.ps1 >/dev/null
   the release gate inputs are complete.
 - If an asset is missing, rerun the platform that owns it and verify its
   checksum before promotion.
+- On the split macOS workflow, rerun failed packaging jobs without rebuilding
+  successful native bundles while their seven-day artifacts remain available.
+  Rerunning an old tag executes that tag's workflow/scripts, not fixes on main.
+  Do not expect the split packaging fix to apply retroactively to beta.131.
 - If the release is already public, later finalizer runs are harmless and must
   not change its prerelease/channel semantics.
 - Record a workflow or release incident in `postmortem/` when the failure
