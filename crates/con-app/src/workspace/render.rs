@@ -534,18 +534,7 @@ impl Render for ConWorkspace {
             };
             let session_id = self.tabs[self.active_tab].summary_id;
             let tab_accent_color = self.tabs[self.active_tab].color;
-            let tree = &self.tabs[self.active_tab].pane_tree;
-            let layout = self.pane_motion.layout(
-                session_id,
-                tree.presentation_key(cx, self.hide_pane_title_bar),
-                || tree.presentation_layout(cx),
-            );
-            let presentation_background = terminal_surface_color.opacity(self.terminal_opacity);
-            let presentation = crate::pane_tree::PaneRenderPresentation {
-                motion: self.pane_motion.clone(),
-                background: presentation_background,
-            };
-            let child = tree.render(
+            self.tabs[self.active_tab].pane_tree.render(
                 session_id,
                 begin_drag_cb,
                 focus_surface_cb,
@@ -560,21 +549,8 @@ impl Render for ConWorkspace {
                 tab_accent_color,
                 self.tab_accent_inactive_alpha,
                 self.hide_pane_title_bar,
-                &presentation,
                 cx,
-            );
-            crate::pane_presentation::PaneScene {
-                motion: self.pane_motion.clone(),
-                session: session_id,
-                layout,
-                zoom: tree.zoomed_pane_id(),
-                animate: tree.dragging.is_none()
-                    && crate::ghostty_view::supports_pane_presentation_motion(),
-                background: presentation_background,
-                child,
-                frame_time: std::time::Instant::now(),
-            }
-            .into_any_element()
+            )
         };
 
         let pane_content_bounds = self.pane_content_bounds.clone();

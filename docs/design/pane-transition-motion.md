@@ -1,7 +1,8 @@
 # Pane Transition Motion
 
-Status: horizontal tab slot motion is implemented. Pane body motion is being
-validated on the `feat/pane-presentation-motion` branch, not yet shipped.
+Status: horizontal tab slot motion is implemented. The pane viewport animation
+prototype was withdrawn after a macOS split exposed a large white region.
+Pane body transitions remain immediate; the native presentation sync is retained.
 
 ## Reference Direction
 
@@ -106,49 +107,61 @@ Animation transition on the live Ghostty layer cannot replace the missing
 ownership and clipping contract. GPUI's transaction-presentation request makes
 geometry and presentation atomic; it does not freeze renderer targets.
 
-### Live Presentation Contract
+### Transition Contract
 
-The implementation uses live content rather than immutable snapshots. One
-workspace owns a numeric presentation tree keyed by session and pane identity.
-It holds no terminal entity, process, history or image. Closing a pane closes
-its terminal immediately; the departing region becomes a short-lived empty
-terminal-colored region, not a screenshot of a dead terminal.
+One workspace transition owns presentation records keyed by stable session,
+pane and surface identity. It never owns a terminal process. Each record needs
+the old and final pane rectangles, an immutable completed frame, its pixel size,
+display scale and color/alpha interpretation. Resource ownership must explicitly
+prevent overwrite as well as deallocation.
 
-Commit the final logical tree and terminal size once. Its presentation tree
-animates split ratios and divider gaps using one timestamp. Derive both child
-rectangles from the same parent and snap their edges to display pixels.
-Interpolating leaf rectangles independently is incorrect: consecutive closes
-of nested panes can leave gaps when their parent is expanding too.
-
-Live bodies lay out at their final pixel size throughout the transition and
-move/crop, never stretch. Headers follow the current presentation width. A
-shorter viewport crops from the top to keep the prompt visible. Growth beyond
-the final body paints only the uncovered margins using the configured terminal
-background and its original opacity. Never paint this fill behind live pixels:
-doing so changes the apparent transparency by compositing it twice.
-
-Windows and Linux use GPUI content masks. macOS also updates its native
-NSScrollView viewport, document/surface origins and frame-scoped presentation.
-Moving or cropping an unchanged native surface must not force a synchronous
-Ghostty draw on every animation frame. Initialization, terminal size/scale
-changes and explicit visibility handoffs retain their existing draw behavior.
-macOS 12 and earlier settle immediately and retain the legacy native path.
+Commit the new logical tree and terminal size once. Animate a tiled set of
+presentation rectangles with one timestamp and one easing curve; shared split
+edges must be calculated once and snapped to the display pixel grid. Frames
+move and crop at their original scale, never stretch. Chrome follows those same
+rectangles. Only final, correctly sized live frames are revealed on handoff.
+Do not make an outgoing decorative frame clickable or route mouse reporting
+through an interpolated grid.
 
 Reduce Motion, divider dragging, window/display resizing, workspace or surface
-switching and unrelated topology imports settle immediately. Split, close and
-zoom reversals retarget from the displayed ratios. Settled dead branches are
-pruned independently, including during another active transition. Idle renders
-reuse the descriptor and presentation rectangles and request no animation frame.
+switching, and unsupported capture settle immediately. A second topology change
+must either retarget from the currently displayed scene with valid immutable
+resources or settle the first transition; it must not accumulate nested covers.
+No capture or resource allocation belongs on the idle or ordinary output path.
 
-### Validation and Follow-up
+### Remaining Work
 
-- Geometry tests cover nested and interrupted split/close/zoom, scale changes,
-  fixed body sizes, topology changes, reduced motion and idle frame demand.
-  A GPUI element fixture checks real layout at intermediate timestamps rather
-  than testing only the numeric coordinator.
-- Run Windows/Linux native CI and real-machine checks when available. Shared
-  layout tests are not proof of native PTY, GPU, IME or selection behavior.
-- Immutable snapshots remain an optional future refinement for departing
-  content, not a prerequisite or an undocumented lease on a live GPU target.
+- Do not re-enable the final-grid/live-viewport prototype. Resizing the live
+  terminal first and interpolating its viewport leaves uncovered margins; it
+  does not retain the old scene or establish frame readiness. Easing and a
+  background fill cannot supply those missing guarantees.
+- Establish an explicit immutable-frame capability per backend. For macOS,
+  investigate an upstream renderer-owned snapshot or GPU-copy operation with
+  completion ordering and bounded retention; do not read private renderer
+  structures or expand the existing fork exception.
+- Validate a Windows retained-image lease and Linux full-scene capture before
+  enabling either backend. A shared trait must not pretend these are equivalent
+  merely because all three can draw a terminal.
+- Implement the presentation coordinator only once a backend satisfies that
+  contract. Measure capture latency/memory and count PTY resizes for nested
+  split, close and zoom, including rapid reversals.
 - Inspect recorded intermediate frames with glass enabled and a bright desktop
   behind the app. Settled screenshots alone are insufficient acceptance.
+
+### Withdrawn Prototype
+
+The 2026-10-13 prototype committed the final terminal grid once and interpolated
+split viewports. Unit tests established tiled geometry and bounded resize counts,
+but the maintainer's Cmd+D test exposed a large white region. That is a failed
+visual acceptance test, even though settled screenshots and geometry tests passed.
+
+The prototype also skipped the synchronous Ghostty draw for some viewport-only
+updates, changing the established native geometry-to-draw ordering. The exact
+compositor timing behind the reported white region was not captured. Neither
+the GPUI fork nor its transaction API can be blamed on this evidence.
+
+The complete prototype was removed, including its native geometry overrides
+and Windows/Linux integration. Pane chrome polishing remains. Future motion
+must demonstrate retained content, correct alpha and frame-ready handoff before
+it replaces the immediate, synchronized path. See the
+[postmortem](../../postmortem/2026-10-13-pane-motion-coverage.md).

@@ -383,10 +383,6 @@ pub struct GhosttyView {
     /// When a surface was created before a real layout pass, keep it hidden until
     /// update_frame commits an actual pane geometry.
     awaiting_first_layout_visibility: bool,
-    #[cfg(target_os = "macos")]
-    presentation_viewport: Option<Bounds<Pixels>>,
-    #[cfg(target_os = "macos")]
-    last_presentation_viewport: Option<Bounds<Pixels>>,
     /// Guard: emit GhosttyProcessExited exactly once, not every 8ms tick.
     process_exit_emitted: bool,
     /// Retry surface creation after transient libghostty initialization failures.
@@ -476,10 +472,6 @@ impl GhosttyView {
             native_view_visible: Cell::new(true),
             surface_focused: Cell::new(true),
             awaiting_first_layout_visibility: false,
-            #[cfg(target_os = "macos")]
-            presentation_viewport: None,
-            #[cfg(target_os = "macos")]
-            last_presentation_viewport: None,
             process_exit_emitted: false,
             next_surface_init_retry_at: None,
             #[cfg(target_os = "macos")]
@@ -1817,7 +1809,6 @@ impl GhosttyView {
         // repainting every sibling; always verify the embedded surface still
         // reports the pixel size that maps to these bounds before skipping.
         if self.last_bounds.as_ref() == Some(&bounds)
-            && self.last_presentation_viewport == self.presentation_viewport
             && !self.awaiting_first_layout_visibility
             && !self.pending_native_layout
             && self.terminal_matches_bounds(bounds)
@@ -1826,20 +1817,7 @@ impl GhosttyView {
             return;
         }
         let started = perf_trace_enabled().then(Instant::now);
-        // Moving/cropping a completed live frame does not require another GPU
-        // draw. Keep the existing forced draw for initialization, size/scale
-        // changes, and explicit visibility/layout reassertions.
-        let presentation_only = self.presentation_viewport.is_some()
-            && self.last_presentation_viewport.is_none_or(|viewport| {
-                viewport.size.width > px(0.0) && viewport.size.height > px(0.0)
-            })
-            && !self.pending_native_layout
-            && !self.awaiting_first_layout_visibility
-            && self.last_bounds.is_some_and(|old| old.size == bounds.size)
-            && self.terminal_matches_bounds(bounds)
-            && self.cached_scale_matches_native(window);
         self.last_bounds = Some(bounds);
-        self.last_presentation_viewport = self.presentation_viewport;
         window.request_native_surface_presentation_sync();
         self.sync_native_backing_background();
 
@@ -1858,20 +1836,19 @@ impl GhosttyView {
                     let _: () = msg_send![underlay_view, setFrame:super_bounds];
                 }
                 let overdraw = NATIVE_SEAM_OVERDRAW_PT;
-                let viewport = self.presentation_viewport.unwrap_or(bounds);
                 let flipped_y = super_frame.size.height
-                    - f64::from(viewport.origin.y)
-                    - f64::from(viewport.size.height)
+                    - f64::from(bounds.origin.y)
+                    - f64::from(bounds.size.height)
                     - overdraw;
 
                 let frame = NSRect::new(
                     cocoa::foundation::NSPoint::new(
-                        f64::from(viewport.origin.x) - overdraw,
+                        f64::from(bounds.origin.x) - overdraw,
                         flipped_y,
                     ),
                     cocoa::foundation::NSSize::new(
-                        f64::from(viewport.size.width) + overdraw * 2.0,
-                        f64::from(viewport.size.height) + overdraw * 2.0,
+                        f64::from(bounds.size.width) + overdraw * 2.0,
+                        f64::from(bounds.size.height) + overdraw * 2.0,
                     ),
                 );
                 let _: () = msg_send![host_view, setFrame:frame];
@@ -1908,7 +1885,7 @@ impl GhosttyView {
             self.awaiting_first_layout_visibility = false;
         }
         self.pending_native_layout = false;
-        self.apply_native_visibility_with_draw(!presentation_only);
+        self.apply_native_visibility();
     }
 
     #[cfg(target_os = "macos")]
@@ -1925,8 +1902,6 @@ impl GhosttyView {
 
         let visible_width = f64::from(bounds.size.width.as_f32().max(1.0));
         let visible_height = f64::from(bounds.size.height.as_f32().max(1.0));
-        let viewport = self.presentation_viewport.unwrap_or(bounds);
-        let viewport_extra_height = (f64::from(viewport.size.height) - visible_height).max(0.0);
         let overdraw = NATIVE_SEAM_OVERDRAW_PT;
         let size = terminal.size();
         let cell_height = if size.cell_height_px > 0 && self.scale_factor > 0.0 {
@@ -1957,7 +1932,7 @@ impl GhosttyView {
                 cocoa::foundation::NSPoint::new(0.0, 0.0),
                 cocoa::foundation::NSSize::new(
                     visible_width + overdraw * 2.0,
-                    document_height + viewport_extra_height + overdraw * 2.0,
+                    document_height + overdraw * 2.0,
                 ),
             );
             let _: () = msg_send![document_view, setFrame:document_frame];
@@ -1992,10 +1967,7 @@ impl GhosttyView {
             // frame must be deterministically reapplied from Con-owned pane
             // bounds plus Ghostty's scrollbar state.
             let surface_frame = NSRect::new(
-                cocoa::foundation::NSPoint::new(
-                    overdraw + f64::from(bounds.left() - viewport.left()),
-                    scroll_y + overdraw + f64::from(viewport.bottom() - bounds.bottom()),
-                ),
+                cocoa::foundation::NSPoint::new(overdraw, scroll_y + overdraw),
                 cocoa::foundation::NSSize::new(visible_width, visible_height),
             );
             let _: () = msg_send![nsview, setFrame:surface_frame];
@@ -2093,15 +2065,6 @@ impl GhosttyView {
     }
 
     #[cfg(target_os = "macos")]
-    pub(crate) fn set_presentation_viewport(&mut self, viewport: Option<Bounds<Pixels>>) {
-        self.presentation_viewport = if supports_pane_presentation_motion() {
-            viewport
-        } else {
-            None
-        };
-    }
-
-    #[cfg(target_os = "macos")]
     fn set_mouse_hidden_by_typing(&self, hidden: bool) {
         if claim_mouse_visibility(self.native_transition_underlay_owner_id, hidden) {
             // Same transient mechanism as Ghostty's native macOS app. Never
@@ -2116,31 +2079,18 @@ impl GhosttyView {
 
     #[cfg(target_os = "macos")]
     fn apply_native_visibility(&self) {
-        self.apply_native_visibility_with_draw(true);
-    }
-
-    #[cfg(target_os = "macos")]
-    fn apply_native_visibility_with_draw(&self, draw: bool) {
-        let has_viewport = self
-            .presentation_viewport
-            .is_none_or(|bounds| bounds.size.width > px(0.0) && bounds.size.height > px(0.0));
         if let Some(host_view) = self.host_view {
             unsafe {
-                let effective_visible = self.native_view_visible.get()
-                    && !self.awaiting_first_layout_visibility
-                    && has_viewport;
+                let effective_visible =
+                    self.native_view_visible.get() && !self.awaiting_first_layout_visibility;
                 let hidden = if effective_visible { NO } else { YES };
                 let _: () = msg_send![host_view, setHidden:hidden];
-                if effective_visible && draw {
+                if effective_visible {
                     let _: () = msg_send![host_view, setNeedsDisplay:YES];
                 }
             }
         }
-        if draw
-            && has_viewport
-            && self.native_view_visible.get()
-            && !self.awaiting_first_layout_visibility
-        {
+        if self.native_view_visible.get() && !self.awaiting_first_layout_visibility {
             self.draw_surface_now();
         }
     }
@@ -2872,17 +2822,6 @@ impl Drop for GhosttyView {
             self.detach_host_view();
         }
         self.host_view = None;
-    }
-}
-
-pub(crate) fn supports_pane_presentation_motion() -> bool {
-    #[cfg(target_os = "macos")]
-    {
-        !GhosttyView::needs_legacy_native_layer_geometry_sync()
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        false
     }
 }
 

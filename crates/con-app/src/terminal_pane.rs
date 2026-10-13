@@ -333,14 +333,6 @@ impl TerminalPane {
         self.entity.clone().into_any_element()
     }
 
-    pub(crate) fn set_presentation_viewport(&self, viewport: Option<Bounds<Pixels>>, cx: &mut App) {
-        #[cfg(target_os = "macos")]
-        self.entity
-            .update(cx, |view, _| view.set_presentation_viewport(viewport));
-        #[cfg(not(target_os = "macos"))]
-        let _ = (viewport, cx);
-    }
-
     pub fn content_lines(&self, n: usize, cx: &App) -> Vec<String> {
         self.entity
             .read(cx)
