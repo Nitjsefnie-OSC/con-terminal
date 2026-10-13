@@ -4,6 +4,18 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.132` - Unreleased
+
+### Fixed
+
+**macOS releases**
+
+- Intel and Apple Silicon builds now share separate Apple Silicon packaging
+  jobs, so signing and notarization can be retried without rebuilding the app.
+  Intel compilation remains native, and both packages must pass all existing
+  signature, ticket and installer checks before publication.
+  _(PR [#475](https://github.com/nowledge-co/con-terminal/pull/475) by [@wey-gu](https://github.com/wey-gu))_
+
 ## `v0.1.0-beta.131` - 2026-10-13
 
 ### Changed
