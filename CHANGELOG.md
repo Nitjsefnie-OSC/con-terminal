@@ -4,6 +4,28 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.135` - 2026-10-14
+
+### Changed
+
+**Agent UI**
+
+- Read each reply in order: reasoning and tool activity, then the answer. Live
+  tools and approvals scroll with the conversation, and the input no longer
+  covers messages or tables.
+  _(PR [#481](https://github.com/nowledge-co/con-terminal/pull/481) by [@wey-gu](https://github.com/wey-gu))_
+- Reasoning and tool calls use compact, aligned disclosures with one output
+  surface. Refined model controls, message spacing, code blocks and panel edges
+  make the chat easier to scan.
+  _(PR [#481](https://github.com/nowledge-co/con-terminal/pull/481) by [@wey-gu](https://github.com/wey-gu))_
+- Working feedback appears immediately after sending a message, before the first
+  response token. It uses the same gentle pulsing bars as horizontal tabs and
+  respects reduced motion.
+  _(PR [#481](https://github.com/nowledge-co/con-terminal/pull/481) by [@wey-gu](https://github.com/wey-gu))_
+- Long replies keep a Continue reading control with expansion feedback and a
+  Show less action, instead of a disappearing block-count button.
+  _(PR [#481](https://github.com/nowledge-co/con-terminal/pull/481) by [@wey-gu](https://github.com/wey-gu))_
+
 ## `v0.1.0-beta.134` - 2026-10-14
 
 ### Changed
