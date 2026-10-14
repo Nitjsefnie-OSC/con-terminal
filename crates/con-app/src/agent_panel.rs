@@ -2807,27 +2807,27 @@ fn render_result_text(content: &str, color: Hsla, theme: &gpui_component::Theme)
 }
 
 fn trace_group_surface(theme: &gpui_component::Theme) -> Hsla {
-    theme.secondary.opacity(0.42)
+    theme.foreground.opacity(0.035)
 }
 
 fn trace_step_surface(theme: &gpui_component::Theme) -> Hsla {
-    theme.background.opacity(0.94)
+    theme.foreground.opacity(0.025)
 }
 
 fn trace_step_header_surface(theme: &gpui_component::Theme) -> Hsla {
-    theme.muted.opacity(0.09)
+    theme.transparent
 }
 
 fn trace_step_header_hover_surface(theme: &gpui_component::Theme) -> Hsla {
-    theme.muted.opacity(0.13)
+    theme.foreground.opacity(0.055)
 }
 
 fn trace_detail_surface(theme: &gpui_component::Theme) -> Hsla {
-    theme.secondary.opacity(0.18)
+    theme.transparent
 }
 
 fn trace_inner_surface(theme: &gpui_component::Theme) -> Hsla {
-    theme.background.opacity(0.90)
+    theme.background.opacity(0.45)
 }
 
 fn result_toggle_label(content: &str, expanded: bool) -> String {
@@ -2990,45 +2990,6 @@ fn render_inline_state(
         .into_any_element()
 }
 
-fn render_meta_chip(
-    label: impl Into<SharedString>,
-    surface: Hsla,
-    text: Hsla,
-    theme: &gpui_component::Theme,
-    mono: bool,
-) -> AnyElement {
-    let chip_px = |value| {
-        if mono {
-            mono_space_px(theme, value)
-        } else {
-            ui_space_px(theme, value)
-        }
-    };
-    let mut label_el = div()
-        .text_size(if mono {
-            mono_px(theme, 10.25)
-        } else {
-            ui_px(theme, 10.25)
-        })
-        .font_weight(FontWeight::MEDIUM)
-        .text_color(text)
-        .child(label.into());
-
-    if mono {
-        label_el = label_el.font_family(theme.mono_font_family.clone());
-    }
-
-    div()
-        .flex()
-        .items_center()
-        .px(chip_px(8.0))
-        .py(chip_px(3.0))
-        .rounded(chip_px(7.0))
-        .bg(surface)
-        .child(label_el)
-        .into_any_element()
-}
-
 fn humanize_provider_name(name: &str) -> String {
     match name.trim().to_ascii_lowercase().as_str() {
         "chatgpt" => "ChatGPT".to_string(),
@@ -3084,7 +3045,7 @@ fn render_model_chips(
                 div()
                     .text_size(ui_px(theme, 10.5))
                     .font_weight(FontWeight::MEDIUM)
-                    .text_color(theme.muted_foreground.opacity(0.48))
+                    .text_color(theme.muted_foreground)
                     .child(provider),
             )
             .child(
@@ -3095,20 +3056,21 @@ fn render_model_chips(
             );
     }
 
-    row = row.child(render_meta_chip(
-        label,
-        theme.secondary_hover,
-        theme.foreground.opacity(0.60),
-        theme,
-        true,
-    ));
+    row = row.child(
+        div()
+            .text_size(ui_px(theme, 11.0))
+            .font_family(theme.font_family.clone())
+            .font_weight(FontWeight::MEDIUM)
+            .text_color(theme.foreground)
+            .child(label),
+    );
 
     if let Some(dur) = duration_ms {
         row = row.child(
             div()
                 .text_size(mono_px(theme, 10.0))
                 .font_family(theme.mono_font_family.clone())
-                .text_color(theme.muted_foreground.opacity(0.38))
+                .text_color(theme.muted_foreground)
                 .child(format_duration_ms(dur)),
         );
     }
@@ -3142,13 +3104,13 @@ fn render_result_toggle_chrome(
                     "phosphor/caret-down.svg"
                 })
                 .size(mono_space_px(theme, 9.5))
-                .text_color(theme.muted_foreground.opacity(0.30)),
+                .text_color(theme.muted_foreground),
         )
         .child(
             div()
-                .text_size(mono_px(theme, 10.0))
-                .font_family(theme.mono_font_family.clone())
-                .text_color(theme.muted_foreground.opacity(0.40))
+                .text_size(ui_px(theme, 11.0))
+                .font_family(theme.font_family.clone())
+                .text_color(theme.muted_foreground)
                 .child(label),
         )
         .into_any_element()
@@ -3407,18 +3369,18 @@ fn render_assistant_message(
                     svg()
                         .path(chevron)
                         .size(ui_icon_px(theme, 10.0))
-                        .text_color(theme.muted_foreground.opacity(0.3)),
+                        .text_color(theme.muted_foreground),
                 )
                 .child(
                     svg()
                         .path("phosphor/brain-duotone.svg")
                         .size(ui_icon_px(theme, 11.0))
-                        .text_color(theme.primary.opacity(0.42)),
+                        .text_color(theme.muted_foreground),
                 )
                 .child(
                     div()
-                        .text_size(px(11.0))
-                        .text_color(theme.muted_foreground.opacity(0.4))
+                        .text_size(ui_px(theme, 11.0))
+                        .text_color(theme.muted_foreground)
                         .child(thinking_summary),
                 ),
         );
@@ -3544,14 +3506,18 @@ fn render_assistant_message(
                                 svg()
                                     .path("phosphor/caret-down.svg")
                                     .size(mono_space_px(theme, 10.0))
-                                    .text_color(theme.muted_foreground.opacity(0.55)),
+                                    .text_color(theme.muted_foreground),
                             )
                             .child(
                                 div()
                                     .text_size(mono_px(theme, 10.5))
                                     .font_family(theme.mono_font_family.clone())
-                                    .text_color(theme.muted_foreground.opacity(0.58))
-                                    .child(format!("Show more · {remaining} blocks left")),
+                                    .text_color(theme.muted_foreground)
+                                    .child(if remaining == 1 {
+                                        "Show remaining block".to_owned()
+                                    } else {
+                                        format!("Show {remaining} more blocks")
+                                    }),
                             ),
                     ),
                 );
@@ -3713,7 +3679,7 @@ fn render_assistant_message(
             for (step_idx, step) in msg.steps.iter().enumerate() {
                 let icon_color = match step.status {
                     StepStatus::Running => theme.warning,
-                    StepStatus::Complete => theme.muted_foreground.opacity(0.4),
+                    StepStatus::Complete => theme.muted_foreground,
                     StepStatus::Denied => theme.danger.opacity(0.7),
                 };
 
@@ -3740,7 +3706,7 @@ fn render_assistant_message(
                     .child(
                         div()
                             .text_size(ui_px(theme, 12.5))
-                            .text_color(theme.foreground.opacity(0.66))
+                            .text_color(theme.foreground)
                             .font_weight(FontWeight::MEDIUM)
                             .child(step_name.to_string()),
                     )
@@ -3756,7 +3722,7 @@ fn render_assistant_message(
                             .flex_shrink_0()
                             .text_size(mono_px(theme, 10.0))
                             .font_family(theme.mono_font_family.clone())
-                            .text_color(theme.muted_foreground.opacity(0.36))
+                            .text_color(theme.muted_foreground)
                             .child(format_step_duration(dur)),
                     );
                 }
@@ -3769,9 +3735,9 @@ fn render_assistant_message(
                             .gap(mono_space_px(theme, 4.0))
                             .child(
                                 div()
-                                    .text_size(mono_px(theme, 10.0))
-                                    .font_family(theme.mono_font_family.clone())
-                                    .text_color(theme.muted_foreground.opacity(0.34))
+                                    .text_size(ui_px(theme, 11.0))
+                                    .font_family(theme.font_family.clone())
+                                    .text_color(theme.muted_foreground)
                                     .child(if detail_collapsed { "Details" } else { "Hide" }),
                             )
                             .child(
@@ -3783,7 +3749,7 @@ fn render_assistant_message(
                                     })
                                     .size(mono_space_px(theme, 10.0))
                                     .flex_shrink_0()
-                                    .text_color(theme.muted_foreground.opacity(0.30)),
+                                    .text_color(theme.muted_foreground),
                             ),
                     );
                 }
@@ -3802,7 +3768,7 @@ fn render_assistant_message(
                             .ml(mono_space_px(theme, 18.0))
                             .text_size(mono_px(theme, 10.5))
                             .line_height(mono_px(theme, 15.0))
-                            .text_color(theme.muted_foreground.opacity(0.56))
+                            .text_color(theme.muted_foreground)
                             .font_family(theme.mono_font_family.clone())
                             .overflow_x_hidden()
                             .whitespace_nowrap()
@@ -4285,8 +4251,7 @@ impl Render for AgentPanel {
             let mut tc_container = div()
                 .flex()
                 .flex_col()
-                .ml(ui_space_px(theme, 19.0))
-                .mr(ui_space_px(theme, 4.0))
+                .mx(ui_space_px(theme, 4.0))
                 .gap(ui_space_px(theme, 10.0))
                 .px(ui_space_px(theme, 10.0))
                 .py(ui_space_px(theme, 10.0))
@@ -4337,7 +4302,7 @@ impl Render for AgentPanel {
                 let human_name = humanize_tool_name(&tc.tool_name);
 
                 let icon_color = if is_done {
-                    theme.muted_foreground.opacity(0.4)
+                    theme.muted_foreground
                 } else {
                     theme.warning
                 };
@@ -4363,7 +4328,7 @@ impl Render for AgentPanel {
                     .child(
                         div()
                             .text_size(ui_px(theme, 12.5))
-                            .text_color(theme.foreground.opacity(0.66))
+                            .text_color(theme.foreground)
                             .font_weight(FontWeight::MEDIUM)
                             .child(human_name),
                     )
@@ -4373,7 +4338,7 @@ impl Render for AgentPanel {
                             .flex_shrink_0()
                             .text_size(mono_px(theme, 10.0))
                             .font_family(theme.mono_font_family.clone())
-                            .text_color(theme.muted_foreground.opacity(0.36))
+                            .text_color(theme.muted_foreground)
                             .child(format_step_duration(dur)),
                     );
                 let top_line = if is_done {
@@ -4396,7 +4361,7 @@ impl Render for AgentPanel {
                         div()
                             .ml(mono_space_px(theme, 18.0))
                             .text_size(mono_px(theme, 10.75))
-                            .text_color(theme.muted_foreground.opacity(0.50))
+                            .text_color(theme.muted_foreground)
                             .font_family(theme.mono_font_family.clone())
                             .overflow_x_hidden()
                             .whitespace_nowrap()

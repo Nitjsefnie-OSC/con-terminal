@@ -37,6 +37,21 @@ the same running/denied count in both text and a badge.
 
 ## Performance and behavior
 
+Expanded tab activity uses three center-anchored, staggered bars in the existing
+retained activity layer. Compact tabs keep their brand icon and ring; numeric
+progress stays determinate. Reduced motion uses static bars, and invisible
+markers do not request animation frames. Activity never changes the tab's width.
+
+Message metadata uses plain UI-font text rather than another filled badge.
+Tool names and disclosure labels use the UI font; commands, arguments, and
+durations retain the mono font. Nested trace surfaces use progressively quieter
+fills, not translucent text or extra rules.
+
+The foreground event dispatcher consumes at most 64 agent events per session
+per turn, in FIFO order, and awaits between turns even while work is available.
+This prevents a continuously ready producer from monopolizing native input
+dispatch. It is not a global time budget for every workspace queue.
+
 The summary is a small chrome subtree outside the virtualized transcript. It
 reads existing panel state; it does not poll terminals, request extra events,
 reparse markdown, or invalidate message caches. Approval callbacks, tool results,
