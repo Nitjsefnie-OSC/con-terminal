@@ -17,6 +17,7 @@ use gpui::{
 enum ActivityVisual {
     None,
     Busy,
+    BusyBars,
     Progress(u8),
     NeedsInput,
     Error,
@@ -28,7 +29,8 @@ impl ActivityVisual {
     fn arc(self, phase: f32, reduced_motion: bool) -> (f32, f32) {
         use std::f32::consts::{FRAC_PI_2, TAU};
         match self {
-            Self::Busy if reduced_motion => (0.0, TAU),
+            Self::Busy | Self::BusyBars if reduced_motion => (0.0, TAU),
+            Self::BusyBars => (0.0, 0.0),
             Self::Busy => (phase * TAU, FRAC_PI_2),
             Self::Progress(percent) => (-FRAC_PI_2, TAU * f32::from(percent) / 100.0),
             Self::NeedsInput | Self::Error | Self::Paused | Self::Done | Self::None => (0.0, 0.0),
@@ -41,7 +43,7 @@ impl ActivityVisual {
             Self::Error => Some("phosphor/x.svg"),
             Self::Paused => Some("phosphor/pause.svg"),
             Self::Done => Some("phosphor/check.svg"),
-            Self::None | Self::Busy | Self::Progress(_) => None,
+            Self::None | Self::Busy | Self::BusyBars | Self::Progress(_) => None,
         }
     }
 }
@@ -105,6 +107,11 @@ impl TabActivity {
         let visual = status
             .map(ActivityVisual::from)
             .unwrap_or(ActivityVisual::None);
+        let visual = if visual == ActivityVisual::Busy && !compact {
+            ActivityVisual::BusyBars
+        } else {
+            visual
+        };
         let active = visual != ActivityVisual::None;
         let slot_size = if compact { px(32.0) } else { size };
         let icon_size = if compact { size.min(px(18.0)) } else { size };
@@ -130,7 +137,9 @@ impl TabActivity {
                 ActivityVisual::NeedsInput | ActivityVisual::Paused => theme.warning,
                 ActivityVisual::Error => theme.danger,
                 ActivityVisual::Done => theme.foreground,
-                ActivityVisual::Progress(_) | ActivityVisual::Busy => theme.foreground,
+                ActivityVisual::Progress(_) | ActivityVisual::Busy | ActivityVisual::BusyBars => {
+                    theme.foreground
+                }
                 ActivityVisual::None => unreachable!(),
             };
             if let Some(glyph) = visual.glyph() {
@@ -196,8 +205,10 @@ impl TabActivity {
                 let mask = window.content_mask();
                 marker.bounds = Some(bounds);
                 marker.mask = Some(mask);
-                if marker.visual == ActivityVisual::Busy
-                    && was_visible != bounds.intersects(&mask.bounds)
+                if matches!(
+                    marker.visual,
+                    ActivityVisual::Busy | ActivityVisual::BusyBars
+                ) && was_visible != bounds.intersects(&mask.bounds)
                 {
                     window.request_animation_frame();
                 }
@@ -234,6 +245,14 @@ impl TabActivity {
     }
 }
 
+fn busy_bar_strength(phase: f32, index: usize, reduced_motion: bool) -> f32 {
+    if reduced_motion {
+        return 0.65;
+    }
+    let angle = (phase - index as f32 * 0.2) * std::f32::consts::TAU;
+    0.5 - 0.5 * angle.cos()
+}
+
 fn paint_ring(
     window: &mut Window,
     bounds: Bounds<Pixels>,
@@ -242,6 +261,26 @@ fn paint_ring(
     phase: f32,
     reduced_motion: bool,
 ) {
+    if visual == ActivityVisual::BusyBars {
+        for index in 0..3 {
+            let strength = busy_bar_strength(phase, index, reduced_motion);
+            let width = bounds.size.width.min(px(18.0));
+            let unit = width / 9.0;
+            let height = bounds.size.height.min(px(14.0)) * (0.35 + 0.65 * strength);
+            let origin = point(
+                bounds.center().x - unit * 3.5 + unit * 2.5 * index as f32,
+                bounds.center().y - height / 2.0,
+            );
+            window.paint_quad(
+                gpui::fill(
+                    Bounds::new(origin, gpui::size(unit * 2.0, height)),
+                    color.opacity(0.65 + 0.35 * strength),
+                )
+                .corner_radii(unit),
+            );
+        }
+        return;
+    }
     let center = bounds.center();
     let radius = (bounds.size.width.min(bounds.size.height) / 2.0) - px(1.0);
     let draw_arc = |window: &mut Window, start: f32, sweep: f32, tone: Hsla| {
@@ -308,11 +347,13 @@ impl Render for TabActivity {
         let animated = window.is_visible()
             && !cx.reduce_motion()
             && markers.rows.iter().any(|marker| {
-                marker.visual == ActivityVisual::Busy
-                    && marker
-                        .bounds
-                        .zip(marker.mask)
-                        .is_none_or(|(bounds, mask)| bounds.intersects(&mask.bounds))
+                matches!(
+                    marker.visual,
+                    ActivityVisual::Busy | ActivityVisual::BusyBars
+                ) && marker
+                    .bounds
+                    .zip(marker.mask)
+                    .is_none_or(|(bounds, mask)| bounds.intersects(&mask.bounds))
             });
         drop(markers);
         let phase = Rc::new(Cell::new(0.0));
@@ -326,7 +367,7 @@ impl Render for TabActivity {
             layer
                 .with_animation(
                     "tab-activity",
-                    Animation::new(Duration::from_secs(2)).repeat_synced(),
+                    Animation::new(Duration::from_millis(1200)).repeat_synced(),
                     move |element, delta| {
                         phase.set(delta);
                         element
@@ -344,6 +385,21 @@ impl Render for TabActivity {
 mod tests {
     use super::*;
     use con_core::terminal_status::Evidence;
+
+    #[test]
+    fn busy_bars_are_periodic_staggered_and_static_with_reduced_motion() {
+        for index in 0..3 {
+            for phase in [0.0, 0.2, 0.5, 0.9] {
+                let value = super::busy_bar_strength(phase, index, false);
+                assert!((0.0..=1.0).contains(&value));
+                assert!(
+                    (value - super::busy_bar_strength(phase + 1.0, index, false)).abs() < 0.00001
+                );
+                assert_eq!(super::busy_bar_strength(phase, index, true), 0.65);
+            }
+        }
+        assert!(super::busy_bar_strength(0.0, 0, false) < super::busy_bar_strength(0.0, 1, false));
+    }
 
     #[gpui::test]
     fn busy_animation_follows_visibility_not_activation(cx: &mut gpui::TestAppContext) {
@@ -602,7 +658,14 @@ mod tests {
                     compact,
                 );
                 assert_eq!(layer.markers.borrow().used, 1);
-                assert_eq!(layer.markers.borrow().rows[0].visual, visual);
+                assert_eq!(
+                    layer.markers.borrow().rows[0].visual,
+                    if !compact && visual == ActivityVisual::Busy {
+                        ActivityVisual::BusyBars
+                    } else {
+                        visual
+                    }
+                );
             }
         }
     }
