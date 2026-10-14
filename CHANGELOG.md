@@ -4,6 +4,27 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.134` - Unreleased
+
+### Changed
+
+**Agent UI**
+
+- Busy tabs use three gently pulsing bars. Chat metadata, thought disclosures,
+  and tool cards have clearer text and quieter, more consistent surfaces.
+  _(PR [#479](https://github.com/nowledge-co/con-terminal/pull/479) by [@wey-gu](https://github.com/wey-gu))_
+- The agent panel has a quieter header edge and a subtle material difference
+  from the titlebar, including with light, transparent chrome.
+  _(PR [#479](https://github.com/nowledge-co/con-terminal/pull/479) by [@wey-gu](https://github.com/wey-gu))_
+
+### Fixed
+
+**Responsiveness**
+
+- Continuous agent output yields between bounded batches so its event queue
+  cannot indefinitely occupy the foreground dispatcher.
+  _(PR [#479](https://github.com/nowledge-co/con-terminal/pull/479) by [@wey-gu](https://github.com/wey-gu))_
+
 ## `v0.1.0-beta.133` - 2026-10-14
 
 ### Fixed
