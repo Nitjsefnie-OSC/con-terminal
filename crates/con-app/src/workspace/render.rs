@@ -422,7 +422,14 @@ impl Render for ConWorkspace {
         let input_bar_surface_color = top_bar_surface_color;
         // Auxiliary chrome shares the titlebar's material. These quiet inner
         // edges are decoration, not the native transition/drag seam covers.
-        let agent_panel_surface_color = top_bar_surface_color;
+        // A slight material step makes the panel's header readable even
+        // when the compact titlebar and desktop backdrop are both light.
+        let agent_panel_surface_color =
+            top_bar_surface_color.blend(theme.foreground.opacity(if theme.is_dark() {
+                0.025
+            } else {
+                0.018
+            }));
         let chrome_edge_color =
             theme
                 .foreground
@@ -870,6 +877,7 @@ impl Render for ConWorkspace {
 
             main_area = main_area.child(
                 div()
+                    .relative()
                     .w(px(panel_width))
                     .min_w_0()
                     .h_full()
@@ -880,12 +888,29 @@ impl Render for ConWorkspace {
                     .bg(agent_panel_surface_color)
                     .child(
                         div()
+                            .absolute()
+                            .top_0()
+                            .left(px(12.0))
+                            .right(px(12.0))
+                            .h(px(1.0))
+                            .bg(chrome_edge_color),
+                    )
+                    .child(
+                        div()
                             .id("agent-panel-divider")
                             .relative()
                             .w(px(1.0))
                             .h_full()
                             .flex_shrink_0()
-                            .bg(chrome_edge_color)
+                            .child(
+                                div()
+                                    .absolute()
+                                    .top(px(12.0))
+                                    .bottom_0()
+                                    .left_0()
+                                    .w(px(1.0))
+                                    .bg(chrome_edge_color),
+                            )
                             .child(
                                 div()
                                     .absolute()

@@ -4,6 +4,12 @@ The sidebar has three distinct jobs: choose the session's provider/model, show
 what is happening now, and retain the conversation and tool trace. Keep those
 regions legible without repeating the same status in each one.
 
+The panel meets the titlebar with a slight neutral material step and a quiet
+inset header separator. Its resize affordance stays full-height, but the
+decorative vertical edge begins below the header. Do not clip the terminal
+junction into a rounded cutout: that reveals the desktop behind native surfaces.
+There is no full-window titlebar rule, outline or opaque transition overlay.
+
 ## Live activity
 
 - Show one live summary below the session controls. Approval takes precedence
