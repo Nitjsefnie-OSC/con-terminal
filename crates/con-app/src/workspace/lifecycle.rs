@@ -3,6 +3,43 @@ use super::*;
 use crate::editor_tab_actions::reusable_editor_tab_index;
 use crate::file_tree_view::OpenFileInEditorTab;
 
+fn ready_ui_events<T>(receive: impl FnMut() -> Option<T>) -> impl Iterator<Item = T> {
+    std::iter::from_fn(receive).take(64)
+}
+
+#[cfg(test)]
+mod event_fairness_tests {
+    use super::ready_ui_events;
+    use std::collections::VecDeque;
+
+    #[test]
+    fn continuously_ready_producer_cannot_extend_the_ui_turn() {
+        let mut produced = 0;
+        let received: Vec<_> = ready_ui_events(|| {
+            produced += 1;
+            Some(produced)
+        })
+        .collect();
+        assert_eq!(received.len(), 64);
+        assert_eq!(produced, 64);
+        assert_eq!(received[0], 1);
+        assert_eq!(received[63], 64);
+    }
+
+    #[test]
+    fn bounded_turns_preserve_order_and_leave_backlog_in_the_queue() {
+        let mut queue: VecDeque<_> = (0..150).collect();
+        let first: Vec<_> = ready_ui_events(|| queue.pop_front()).collect();
+        assert_eq!(first, (0..64).collect::<Vec<_>>());
+        assert_eq!(queue.len(), 86);
+        let second: Vec<_> = ready_ui_events(|| queue.pop_front()).collect();
+        assert_eq!(second, (64..128).collect::<Vec<_>>());
+        let last: Vec<_> = ready_ui_events(|| queue.pop_front()).collect();
+        assert_eq!(last, (128..150).collect::<Vec<_>>());
+        assert!(ready_ui_events(|| queue.pop_front()).next().is_none());
+    }
+}
+
 impl ConWorkspace {
     #[cfg(target_os = "macos")]
     pub fn from_session(
@@ -654,8 +691,11 @@ impl ConWorkspace {
                     for tab_idx in 0..workspace.tabs.len() {
                         let is_active = tab_idx == workspace.active_tab;
 
-                        // Agent events
-                        while let Ok(event) = workspace.tabs[tab_idx].session.events().try_recv() {
+                        // Bound each producer's turn so a streaming backlog cannot
+                        // monopolize AppKit/GPUI input dispatch. Leave queued events
+                        // intact and preserve their order for the next turn.
+                        let events = workspace.tabs[tab_idx].session.events().clone();
+                        for event in ready_ui_events(|| events.try_recv().ok()) {
                             got_event = true;
                             let suppress_event =
                                 workspace.handle_pending_control_agent_event(tab_idx, &event);
@@ -747,8 +787,10 @@ impl ConWorkspace {
                 })
                 .ok();
 
-                if !got_event {
-                    // Idle tick. The previous 16ms cap meant a PTY
+                {
+                    // Yield even while busy: an always-ready agent/PTY producer
+                    // must not keep this foreground task running without await.
+                    // The previous 16ms cap meant a PTY
                     // chunk arriving 1ms after the loop entered the
                     // sleep had to wait the full 15ms before any
                     // GPUI repaint was even scheduled — visible as
@@ -765,7 +807,11 @@ impl ConWorkspace {
                     // (typically 60 Hz) so this doesn't actually
                     // double the paint work.
                     cx.background_executor()
-                        .timer(std::time::Duration::from_millis(8))
+                        .timer(std::time::Duration::from_millis(if got_event {
+                            4
+                        } else {
+                            8
+                        }))
                         .await;
                 }
             }
