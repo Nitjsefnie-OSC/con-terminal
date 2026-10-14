@@ -4,6 +4,17 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.133` - Unreleased
+
+### Fixed
+
+**macOS releases**
+
+- Correct the architecture check that blocked both macOS packages after a
+  successful build. App and companion CLI binaries now share the same tested
+  check before upload and packaging.
+  _(PR [#477](https://github.com/nowledge-co/con-terminal/pull/477) by [@wey-gu](https://github.com/wey-gu))_
+
 ## `v0.1.0-beta.132` - 2026-10-14
 
 ### Fixed
