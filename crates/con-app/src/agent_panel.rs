@@ -1,4 +1,5 @@
 use crossbeam_channel::Sender;
+use gpui::prelude::FluentBuilder;
 use gpui::*;
 use gpui_component::button::{Button, ButtonVariants as _};
 use gpui_component::clipboard::Clipboard;
@@ -6,7 +7,6 @@ use gpui_component::input::{InputEvent, Position, Textarea, TextareaState};
 use gpui_component::menu::{DropdownMenu as _, PopupMenu, PopupMenuItem};
 use gpui_component::scroll::ScrollableElement;
 use gpui_component::separator::Separator;
-use gpui_component::spinner::Spinner;
 use gpui_component::text::TextView;
 use gpui_component::{ActiveTheme, Disableable, Icon, Sizable as _, Theme};
 
@@ -41,6 +41,7 @@ use crate::ui_scale::{mono_px, mono_space_px, ui_icon_px, ui_px, ui_space_px};
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum AgentStatus {
     Idle,
+    AwaitingResponse,
     Thinking,
     Responding,
 }
@@ -197,7 +198,12 @@ impl PanelState {
 
     pub fn add_message(&mut self, role: &str, content: &str) {
         self.streaming = false;
-        self.status = AgentStatus::Idle;
+        // Submission feedback must not wait for context gathering or network events.
+        self.status = if role == "user" {
+            AgentStatus::AwaitingResponse
+        } else {
+            AgentStatus::Idle
+        };
         self.messages.push(PanelMessage::new(role, content));
     }
 
@@ -223,7 +229,8 @@ impl PanelState {
             last.set_thinking(thinking.map(ToOwned::to_owned));
             last.steps = restored_steps_from_agent_steps(steps);
             last.thinking_collapsed = true;
-            if !last.steps.is_empty() {
+            if !last.steps.is_empty() || last.thinking.as_ref().is_some_and(|text| !text.is_empty())
+            {
                 last.steps_collapsed = true;
             }
             last.touch();
@@ -234,7 +241,7 @@ impl PanelState {
         self.status = AgentStatus::Thinking;
         if let Some(last) = self.messages.last_mut() {
             last.steps.push(StepEntry {
-                icon: "phosphor/brain-duotone.svg",
+                icon: "phosphor/sparkle.svg",
                 label: step.to_string(),
                 detail: None,
                 status: StepStatus::Complete,
@@ -406,10 +413,11 @@ impl PanelState {
                 last.touch();
             }
         }
-        // Auto-collapse steps on completed messages to reduce scroll noise. This
+        // Auto-collapse activity on completed messages to reduce scroll noise. This
         // must happen after live tool calls are moved into the step timeline.
         if let Some(last) = self.messages.last_mut()
-            && !last.steps.is_empty()
+            && (!last.steps.is_empty()
+                || last.thinking.as_ref().is_some_and(|text| !text.is_empty()))
         {
             last.steps_collapsed = true;
             last.touch();
@@ -478,12 +486,13 @@ impl PanelState {
 
 pub struct AgentPanel {
     state: PanelState,
+    busy_indicator: Entity<crate::tab_activity::BusyIndicator>,
     assistant_avatar_asset: SharedString,
     assistant_message_views: Vec<Option<Entity<AssistantMessageView>>>,
     message_list_state: ListState,
     message_list_handler_installed: bool,
     history_scroll_handle: ScrollHandle,
-    transcript_footer_scroll_handle: ScrollHandle,
+    message_list_message_count: usize,
     showing_history: bool,
     conversation_list: Vec<ConversationSummary>,
     auto_approve: bool,
@@ -656,6 +665,7 @@ struct AssistantMessageView {
     state_key: AssistantMessageStateKey,
     is_streaming_assistant: bool,
     rendered_markdown_blocks: usize,
+    markdown_expanded: bool,
     markdown_hydration_pending: bool,
     markdown_block_views: Vec<Option<Entity<ChatMarkdownBlockView>>>,
     markdown_block_view_len: usize,
@@ -689,6 +699,7 @@ impl AssistantMessageView {
             state_key,
             is_streaming_assistant,
             rendered_markdown_blocks,
+            markdown_expanded: false,
             markdown_hydration_pending: false,
             markdown_block_views: Vec::new(),
             markdown_block_view_len: 0,
@@ -717,6 +728,7 @@ impl AssistantMessageView {
             self.state_key = state_key;
             self.is_streaming_assistant = is_streaming_assistant;
             if self.state_key.content_markdown_blocks == 0 {
+                self.markdown_expanded = false;
                 self.rendered_markdown_blocks = 0;
                 self.markdown_hydration_pending = false;
                 self.markdown_block_views.clear();
@@ -725,6 +737,7 @@ impl AssistantMessageView {
                 || self.rendered_markdown_blocks == 0
                 || self.rendered_markdown_blocks > self.state_key.content_markdown_blocks
             {
+                self.markdown_expanded = false;
                 self.rendered_markdown_blocks =
                     Self::initial_markdown_block_limit(self.state_key.content_markdown_blocks);
                 self.markdown_hydration_pending = false;
@@ -766,6 +779,9 @@ impl AssistantMessageView {
                 .await;
             let _ = this.update(cx, |view, cx| {
                 view.markdown_hydration_pending = false;
+                if !view.is_streaming_assistant && !view.markdown_expanded {
+                    return;
+                }
                 let total_blocks = view.state_key.content_markdown_blocks;
                 if total_blocks <= view.rendered_markdown_blocks {
                     return;
@@ -807,6 +823,7 @@ impl AssistantMessageView {
         let gap = chat_markdown_block_gap(ChatMarkdownTone::Message, theme);
         let copy_namespace = format!("asst-{}", self.msg_idx);
         div()
+            .debug_selector(|| "assistant-markdown".into())
             .w_full()
             .flex()
             .flex_col()
@@ -1017,12 +1034,13 @@ impl AgentPanel {
     pub fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut panel = Self {
             state: PanelState::new(),
+            busy_indicator: cx.new(|cx| crate::tab_activity::BusyIndicator::new(window, cx)),
             assistant_avatar_asset: con_core::config::DEFAULT_AGENT_AVATAR_ASSET.into(),
             assistant_message_views: Vec::new(),
             message_list_state: ListState::new(0, ListAlignment::Top, px(2048.0)),
             message_list_handler_installed: false,
             history_scroll_handle: ScrollHandle::new(),
-            transcript_footer_scroll_handle: ScrollHandle::new(),
+            message_list_message_count: 0,
             showing_history: false,
             conversation_list: Vec::new(),
             auto_approve: false,
@@ -1146,12 +1164,13 @@ impl AgentPanel {
     pub fn with_state(state: PanelState, window: &mut Window, cx: &mut Context<Self>) -> Self {
         let mut panel = Self {
             state,
+            busy_indicator: cx.new(|cx| crate::tab_activity::BusyIndicator::new(window, cx)),
             assistant_avatar_asset: con_core::config::DEFAULT_AGENT_AVATAR_ASSET.into(),
             assistant_message_views: Vec::new(),
             message_list_state: ListState::new(0, ListAlignment::Top, px(2048.0)),
             message_list_handler_installed: false,
             history_scroll_handle: ScrollHandle::new(),
-            transcript_footer_scroll_handle: ScrollHandle::new(),
+            message_list_message_count: 0,
             showing_history: false,
             conversation_list: Vec::new(),
             auto_approve: false,
@@ -1185,7 +1204,7 @@ impl AgentPanel {
         self.message_list_state = ListState::new(0, ListAlignment::Top, px(2048.0));
         self.message_list_state.set_follow_mode(FollowMode::Tail);
         self.message_list_handler_installed = false;
-        self.transcript_footer_scroll_handle = ScrollHandle::new();
+        self.message_list_message_count = 0;
         self.assistant_message_views.clear();
         self.follow_output = FollowOutputState::Auto;
         self.showing_history = false;
@@ -1698,12 +1717,24 @@ impl AgentPanel {
 
     fn sync_message_list_count(&mut self) {
         let old_count = self.message_list_state.item_count();
-        let new_count = self.state.messages.len();
-        if new_count > old_count {
+        let message_count = self.state.messages.len();
+        let has_activity = self.state.status != AgentStatus::Idle
+            || self.state.streaming
+            || !self.state.tool_calls.is_empty()
+            || !self.state.pending_approvals.is_empty();
+        let new_count = message_count + usize::from(has_activity);
+        if message_count != self.message_list_message_count || old_count != new_count {
+            // Replace the old tail as well: a new assistant message can occupy
+            // the index that previously held the live activity row.
+            let start = self
+                .message_list_message_count
+                .min(message_count)
+                .min(old_count);
             self.message_list_state
-                .splice(old_count..old_count, new_count - old_count);
-        } else if new_count < old_count {
-            self.message_list_state.splice(new_count..old_count, 0);
+                .splice(start..old_count, new_count - start);
+            self.message_list_message_count = message_count;
+        } else if has_activity {
+            self.remeasure_message(message_count);
         }
     }
 
@@ -2054,21 +2085,18 @@ impl AgentPanel {
             return Some((tool_icon(&tc.tool_name), label));
         }
         match self.state.status {
-            AgentStatus::Thinking => Some(("phosphor/brain-duotone.svg", "Thinking…")),
+            AgentStatus::AwaitingResponse => Some(("phosphor/sparkle.svg", "Working…")),
+            AgentStatus::Thinking => Some(("phosphor/sparkle.svg", "Thinking…")),
             AgentStatus::Responding => Some(("phosphor/chat-circle-fill.svg", "Writing…")),
             AgentStatus::Idle => None,
         }
-    }
-
-    fn running_tool_call(&self) -> Option<&ToolCallEntry> {
-        self.state.tool_calls.iter().find(|tc| tc.result.is_none())
     }
 }
 
 fn tool_icon(tool_name: &str) -> &'static str {
     match tool_name {
         "terminal_exec" | "batch_exec" => "phosphor/play-circle-fill.svg",
-        "shell_exec" => "phosphor/terminal-duotone.svg",
+        "shell_exec" => "phosphor/play.svg",
         "probe_shell_context" => "phosphor/magnifying-glass.svg",
         "file_write" => "phosphor/pencil-simple.svg",
         "file_read" => "phosphor/file-code.svg",
@@ -2641,13 +2669,8 @@ fn render_result_block(
     connected: bool,
 ) -> AnyElement {
     let is_short = content.lines().count() <= 1 && content.len() < 80;
-    let nested_surface = if connected {
-        trace_inner_surface(theme)
-    } else {
-        trace_step_surface(theme)
-    };
     let result_shell_surface = if connected {
-        theme.background.opacity(0.88)
+        theme.foreground.opacity(0.025)
     } else {
         trace_inner_surface(theme)
     };
@@ -2656,24 +2679,17 @@ fn render_result_block(
     if is_short && content != "(no output)" {
         if connected {
             div()
-                .pl(px(18.0))
-                .pr(px(12.0))
-                .py(px(8.0))
-                .bg(nested_surface)
-                .child(
-                    div()
-                        .px(px(9.0))
-                        .py(px(6.0))
-                        .rounded(px(9.0))
-                        .bg(result_shell_surface)
-                        .text_size(px(10.5))
-                        .font_family(theme.mono_font_family.clone())
-                        .line_height(px(15.0))
-                        .text_color(theme.foreground.opacity(0.72))
-                        .overflow_x_hidden()
-                        .whitespace_normal()
-                        .child(content.to_string()),
-                )
+                .px(mono_space_px(theme, 10.0))
+                .py(mono_space_px(theme, 8.0))
+                .rounded(ui_space_px(theme, 8.0))
+                .bg(result_shell_surface)
+                .text_size(mono_px(theme, 10.5))
+                .font_family(theme.mono_font_family.clone())
+                .line_height(mono_px(theme, 15.0))
+                .text_color(theme.foreground)
+                .overflow_x_hidden()
+                .whitespace_normal()
+                .child(content.to_string())
                 .into_any_element()
         } else {
             // Short result — inline, no code block
@@ -2696,27 +2712,20 @@ fn render_result_block(
         let body = if let Some(rows) = structured_rows {
             render_key_value_text(rows.as_slice(), theme).into_any_element()
         } else {
-            render_result_text(content, theme.foreground.opacity(0.74), theme).into_any_element()
+            render_result_text(content, theme.foreground, theme).into_any_element()
         };
         if connected {
             div()
-                .pl(px(18.0))
-                .pr(px(12.0))
-                .py(px(9.0))
-                .bg(nested_surface)
-                .child(
-                    div()
-                        .px(px(10.0))
-                        .py(px(9.0))
-                        .rounded(px(10.0))
-                        .bg(result_shell_surface)
-                        .overflow_x_hidden()
-                        .font_family(theme.mono_font_family.clone())
-                        .text_size(px(10.75))
-                        .line_height(px(16.0))
-                        .text_color(theme.muted_foreground.opacity(0.72))
-                        .child(body),
-                )
+                .px(mono_space_px(theme, 10.0))
+                .py(mono_space_px(theme, 9.0))
+                .rounded(ui_space_px(theme, 8.0))
+                .bg(result_shell_surface)
+                .overflow_x_hidden()
+                .font_family(theme.mono_font_family.clone())
+                .text_size(mono_px(theme, 10.75))
+                .line_height(mono_px(theme, 16.0))
+                .text_color(theme.muted_foreground)
+                .child(body)
                 .into_any_element()
         } else {
             div()
@@ -2806,14 +2815,6 @@ fn render_result_text(content: &str, color: Hsla, theme: &gpui_component::Theme)
     div().child(StyledText::new(display.clone()).with_runs(vec![text_style.to_run(display.len())]))
 }
 
-fn trace_group_surface(theme: &gpui_component::Theme) -> Hsla {
-    theme.foreground.opacity(0.035)
-}
-
-fn trace_step_surface(theme: &gpui_component::Theme) -> Hsla {
-    theme.foreground.opacity(0.025)
-}
-
 fn trace_step_header_surface(theme: &gpui_component::Theme) -> Hsla {
     theme.transparent
 }
@@ -2857,7 +2858,7 @@ fn restored_steps_from_agent_steps(agent_steps: &[AgentStep]) -> Vec<StepEntry> 
         match step {
             AgentStep::Thinking(text) => {
                 restored.push(StepEntry {
-                    icon: "phosphor/brain-duotone.svg",
+                    icon: "phosphor/sparkle.svg",
                     label: text.clone(),
                     detail: None,
                     status: StepStatus::Complete,
@@ -3068,8 +3069,8 @@ fn render_model_chips(
     if let Some(dur) = duration_ms {
         row = row.child(
             div()
-                .text_size(mono_px(theme, 10.0))
-                .font_family(theme.mono_font_family.clone())
+                .text_size(ui_px(theme, 10.5))
+                .font_family(theme.font_family.clone())
                 .text_color(theme.muted_foreground)
                 .child(format_duration_ms(dur)),
         );
@@ -3125,76 +3126,6 @@ fn render_section_kicker(label: &str, theme: &gpui_component::Theme) -> AnyEleme
         .into_any_element()
 }
 
-/// One live summary outside the virtualized transcript. Tool details can wrap
-/// without competing with the action label or changing message-cache keys.
-fn render_live_activity(
-    label: &str,
-    detail: Option<&str>,
-    icon: Option<&str>,
-    color: Hsla,
-    theme: &gpui_component::Theme,
-) -> AnyElement {
-    let indicator = if let Some(icon) = icon {
-        svg()
-            .path(SharedString::from(icon.to_owned()))
-            .size(ui_icon_px(theme, 14.0))
-            .text_color(color)
-            .into_any_element()
-    } else {
-        Spinner::new().small().color(color).into_any_element()
-    };
-    let mut text = div()
-        .flex()
-        .flex_col()
-        .flex_1()
-        .min_w_0()
-        .gap(ui_space_px(theme, 4.0))
-        .child(
-            div()
-                .debug_selector(|| "agent-live-label".into())
-                .text_size(ui_px(theme, 12.0))
-                .line_height(ui_px(theme, 18.0))
-                .font_weight(FontWeight::MEDIUM)
-                .text_color(theme.foreground)
-                .child(label.to_owned()),
-        );
-    if let Some(detail) = detail.filter(|detail| !detail.is_empty()) {
-        text = text.child(
-            div()
-                .debug_selector(|| "agent-live-detail".into())
-                .min_w_0()
-                .overflow_hidden()
-                .text_size(mono_px(theme, 10.5))
-                .line_height(mono_px(theme, 16.0))
-                .font_family(theme.mono_font_family.clone())
-                .text_color(theme.muted_foreground)
-                .child(truncate_str(detail, 96)),
-        );
-    }
-    div()
-        .debug_selector(|| "agent-live-activity".into())
-        .flex()
-        .items_start()
-        .min_w_0()
-        .gap(ui_space_px(theme, 8.0))
-        .mx(ui_space_px(theme, 14.0))
-        .mb(ui_space_px(theme, 12.0))
-        .px(ui_space_px(theme, 10.0))
-        .py(ui_space_px(theme, 9.0))
-        .rounded(ui_space_px(theme, 8.0))
-        .bg(theme.foreground.opacity(0.04))
-        .child(
-            div()
-                .flex_shrink_0()
-                .h(ui_px(theme, 18.0))
-                .flex()
-                .items_center()
-                .child(indicator),
-        )
-        .child(text)
-        .into_any_element()
-}
-
 fn render_step_status_tag(status: StepStatus, theme: &gpui_component::Theme) -> Option<AnyElement> {
     match status {
         StepStatus::Running => Some(render_inline_state("Live".into(), theme.warning, theme)),
@@ -3215,6 +3146,104 @@ fn run_status_summary(step_count: usize, running_count: usize, denied_count: usi
             if step_count == 1 { "" } else { "s" }
         )
     }
+}
+
+/// Shared column geometry for reasoning, tool and live activity headers.
+fn activity_row_header(
+    role: &'static str,
+    icon: Option<AnyElement>,
+    label: &str,
+    preview: Option<&str>,
+    accessories: Vec<AnyElement>,
+    label_color: Hsla,
+    theme: &Theme,
+) -> Div {
+    let mut icon_column = div()
+        .debug_selector(move || format!("agent-{role}-icon"))
+        .flex_none()
+        .size(ui_icon_px(theme, 16.0))
+        .flex()
+        .items_center()
+        .justify_center();
+    if let Some(icon) = icon {
+        icon_column = icon_column.child(icon);
+    }
+    let mut row = div()
+        .w_full()
+        .min_w_0()
+        .h(ui_space_px(theme, 32.0))
+        .px(ui_space_px(theme, 10.0))
+        .flex()
+        .items_center()
+        .gap(ui_space_px(theme, 8.0))
+        .child(icon_column)
+        .child(
+            div()
+                .debug_selector(move || {
+                    if role == "work" {
+                        "agent-run-title".into()
+                    } else {
+                        format!("agent-{role}-label")
+                    }
+                })
+                .min_w_0()
+                .flex_shrink_1()
+                .truncate()
+                .when(preview.is_none(), |label| label.flex_1())
+                .text_size(ui_px(theme, 12.5))
+                .line_height(ui_px(theme, 18.0))
+                .font_family(theme.font_family.clone())
+                .font_weight(if role == "note" {
+                    FontWeight::NORMAL
+                } else {
+                    FontWeight::MEDIUM
+                })
+                .text_color(label_color)
+                .child(label.to_owned()),
+        );
+    if let Some(preview) = preview {
+        row = row.child(
+            div()
+                .debug_selector(move || format!("agent-{role}-detail"))
+                .flex_1()
+                .min_w_0()
+                .truncate()
+                .font_family(theme.mono_font_family.clone())
+                .text_size(ui_px(theme, 11.5))
+                .line_height(ui_px(theme, 18.0))
+                .text_color(theme.muted_foreground)
+                .child(preview.to_owned()),
+        );
+    }
+    row.children(accessories)
+}
+
+fn activity_icon(path: &str, color: Hsla, theme: &Theme) -> AnyElement {
+    svg()
+        .path(SharedString::from(path.to_owned()))
+        .size(ui_icon_px(theme, 13.0))
+        .text_color(color)
+        .into_any_element()
+}
+
+fn activity_caret(expanded: bool, theme: &Theme) -> AnyElement {
+    div()
+        .flex_none()
+        .size(ui_icon_px(theme, 16.0))
+        .flex()
+        .items_center()
+        .justify_center()
+        .child(
+            svg()
+                .path(if expanded {
+                    "phosphor/caret-down.svg"
+                } else {
+                    "phosphor/caret-right.svg"
+                })
+                .size(ui_icon_px(theme, 10.0))
+                .text_color(theme.muted_foreground),
+        )
+        .into_any_element()
 }
 
 fn render_user_message_text(
@@ -3308,54 +3337,71 @@ fn render_assistant_message(
     panel: WeakEntity<AgentPanel>,
     view: WeakEntity<AssistantMessageView>,
     msg_idx: usize,
-    _is_streaming_assistant: bool,
+    is_streaming_assistant: bool,
     rendered_markdown_blocks: usize,
+    markdown_expanded: bool,
     rendered_markdown: Option<AnyElement>,
     theme: &Theme,
 ) -> AnyElement {
     let assistant_content_for_copy = msg.content.clone();
     let msg_model = msg.model.as_deref().unwrap_or("");
-    let msg_duration_ms = msg.duration_ms;
-    let mut msg_el = div().flex().flex_col().gap(px(4.0));
-    let mut header_row = div().flex().items_center().gap(px(6.0)).pb(px(3.0)).child(
-        img(avatar_asset)
-            .size(ui_icon_px(theme, 22.0))
-            .object_fit(ObjectFit::Contain)
-            .flex_none(),
-    );
+    let has_reasoning = msg.thinking.as_ref().is_some_and(|text| !text.is_empty());
+    let msg_duration_ms = msg
+        .duration_ms
+        .filter(|_| msg.steps.is_empty() && !has_reasoning);
+    let mut msg_el = div().flex().flex_col().gap(ui_space_px(theme, 8.0));
+    let mut answer_el = div()
+        .debug_selector(|| "agent-answer".into())
+        .flex()
+        .flex_col()
+        .gap(ui_space_px(theme, 8.0));
+    let mut header_row = div()
+        .flex()
+        .items_center()
+        .gap(ui_space_px(theme, 8.0))
+        .pb(ui_space_px(theme, 2.0))
+        .child(
+            img(avatar_asset)
+                .size(ui_icon_px(theme, 22.0))
+                .object_fit(ObjectFit::Contain)
+                .flex_none(),
+        );
     header_row = header_row.child(render_model_chips(msg_model, msg_duration_ms, theme));
     msg_el = msg_el.child(header_row);
 
+    let mut reasoning_el = div()
+        .flex()
+        .flex_col()
+        .items_start()
+        .gap(ui_space_px(theme, 4.0));
     if let Some(thinking) = &msg.thinking
         && !thinking.is_empty()
+        && !msg.steps_collapsed
     {
         let thinking_collapsed = msg.thinking_collapsed;
-        let chevron = if thinking_collapsed {
-            "phosphor/caret-right.svg"
+        let thinking_summary = if is_streaming_assistant {
+            "Thinking…"
         } else {
-            "phosphor/caret-down.svg"
-        };
-        let word_count = thinking.split_whitespace().count();
-        let thinking_summary = if word_count > 0 {
-            format!("Thought · {} words", word_count)
-        } else {
-            "Thinking…".to_string()
+            "Reasoning"
         };
 
         let thinking_panel = panel.clone();
-        msg_el = msg_el.child(
-            div()
-                .id(SharedString::from(format!("thinking-toggle-{msg_idx}")))
-                .flex()
-                .items_center()
-                .gap(px(5.0))
-                .ml(px(19.0))
-                .py(px(2.0))
-                .px(px(4.0))
-                .rounded(px(4.0))
-                .cursor_pointer()
-                .hover(|s| s.bg(theme.muted.opacity(0.05)))
-                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+        reasoning_el = reasoning_el.child(
+            Button::new(SharedString::from(format!("thinking-toggle-{msg_idx}")))
+                .debug_selector(|| "agent-reasoning-toggle".into())
+                .ghost()
+                .w_full()
+                .h_auto()
+                .p_0()
+                .rounded(ui_space_px(theme, 8.0))
+                .text_color(theme.muted_foreground)
+                .accessibility_label(if thinking_collapsed {
+                    "Expand reasoning"
+                } else {
+                    "Collapse reasoning"
+                })
+                .on_click(move |_, _, cx| {
+                    cx.stop_propagation();
                     let _ = thinking_panel.update(cx, |this, cx| {
                         if let Some(m) = this.state.messages.get_mut(msg_idx) {
                             m.thinking_collapsed = !m.thinking_collapsed;
@@ -3365,41 +3411,33 @@ fn render_assistant_message(
                         cx.notify();
                     });
                 })
-                .child(
-                    svg()
-                        .path(chevron)
-                        .size(ui_icon_px(theme, 10.0))
-                        .text_color(theme.muted_foreground),
-                )
-                .child(
-                    svg()
-                        .path("phosphor/brain-duotone.svg")
-                        .size(ui_icon_px(theme, 11.0))
-                        .text_color(theme.muted_foreground),
-                )
-                .child(
-                    div()
-                        .text_size(ui_px(theme, 11.0))
-                        .text_color(theme.muted_foreground)
-                        .child(thinking_summary),
-                ),
+                .child(activity_row_header(
+                    "reasoning",
+                    Some(activity_icon(
+                        "phosphor/sparkle.svg",
+                        theme.muted_foreground,
+                        theme,
+                    )),
+                    thinking_summary,
+                    None,
+                    vec![activity_caret(!thinking_collapsed, theme)],
+                    theme.foreground,
+                    theme,
+                )),
         );
 
         if !thinking_collapsed {
             let mut thinking_el = div()
-                .ml(px(23.0))
-                .mr(px(4.0))
+                .debug_selector(|| "agent-reasoning-content".into())
+                .w_full()
                 .mt(px(1.0))
                 .mb(px(2.0))
-                .px(px(10.0))
-                .py(px(7.0))
-                .rounded(px(8.0))
-                .bg(theme.muted.opacity(0.04))
-                .max_h(px(200.0))
-                .overflow_y_hidden()
-                .text_size(px(12.0))
-                .line_height(px(18.0))
-                .text_color(theme.muted_foreground.opacity(0.54));
+                .pl(ui_space_px(theme, 34.0))
+                .pr(ui_space_px(theme, 10.0))
+                .py(ui_space_px(theme, 8.0))
+                .text_size(ui_px(theme, 12.0))
+                .line_height(ui_px(theme, 19.0))
+                .text_color(theme.muted_foreground);
             if let Some(markdown) = msg.thinking_markdown.as_ref() {
                 thinking_el =
                     thinking_el.child(render_parsed_chat_markdown_prefix_with_copy_namespace(
@@ -3412,9 +3450,9 @@ fn render_assistant_message(
             } else {
                 thinking_el = thinking_el.child(div().whitespace_normal().child(thinking.clone()));
             }
-            msg_el = msg_el.child(thinking_el);
-            msg_el = msg_el.child(
-                div().ml(px(23.0)).child(
+            reasoning_el = reasoning_el.child(thinking_el);
+            reasoning_el = reasoning_el.child(
+                div().pl(ui_space_px(theme, 34.0)).child(
                     Clipboard::new(format!("copy-think-{msg_idx}"))
                         .value(SharedString::from(thinking.clone())),
                 ),
@@ -3424,11 +3462,9 @@ fn render_assistant_message(
 
     if !msg.content.is_empty() {
         let mut content_el = div()
-            .ml(px(19.0))
-            .pr(px(4.0))
-            .text_size(px(14.0))
-            .line_height(px(23.0))
-            .text_color(theme.foreground.opacity(0.88));
+            .text_size(ui_px(theme, 14.0))
+            .line_height(ui_px(theme, 23.0))
+            .text_color(theme.foreground);
 
         if msg.select_mode {
             content_el = content_el.child(
@@ -3465,80 +3501,107 @@ fn render_assistant_message(
                 content_el = content_el.child(div().mt(ui_space_px(theme, 6.0)).child(
                     render_plain_multiline_text(
                         suffix,
-                        theme.mono_font_family.clone(),
-                        mono_px(theme, 14.0),
-                        mono_px(theme, 23.0),
-                        theme.foreground.opacity(0.78),
+                        theme.font_family.clone(),
+                        ui_px(theme, 14.0),
+                        ui_px(theme, 23.0),
+                        theme.foreground,
                     ),
                 ));
             }
-            if visible_blocks < markdown.block_count() {
-                let remaining = markdown.block_count().saturating_sub(visible_blocks);
+            if !is_streaming_assistant
+                && markdown.block_count() > LONG_MARKDOWN_PROGRESSIVE_THRESHOLD_BLOCKS
+            {
+                let expanding = markdown_expanded && visible_blocks < markdown.block_count();
                 let more_view = view.clone();
                 content_el = content_el.child(
-                    div().mt(ui_space_px(theme, 8.0)).child(
-                        div()
-                            .id(SharedString::from(format!("assistant-more-{msg_idx}")))
-                            .flex()
-                            .items_center()
-                            .gap(mono_space_px(theme, 6.0))
-                            .px(mono_space_px(theme, 8.0))
-                            .py(mono_space_px(theme, 4.0))
-                            .rounded(mono_space_px(theme, 7.0))
-                            .cursor_pointer()
-                            .bg(theme.muted.opacity(0.05))
-                            .hover(|s| s.bg(theme.muted.opacity(0.09)))
-                            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                                let _ = more_view.update(cx, |view, cx| {
-                                    view.rendered_markdown_blocks = (view.rendered_markdown_blocks
-                                        + LONG_MARKDOWN_BATCH_BLOCKS * 2)
-                                        .min(view.state_key.content_markdown_blocks);
-                                    let msg_idx = view.msg_idx;
-                                    let panel = view.panel.clone();
-                                    let _ = panel.update(cx, |panel, cx| {
-                                        panel.remeasure_message(msg_idx);
+                    div()
+                        .flex()
+                        .flex_col()
+                        .items_start()
+                        .mt(ui_space_px(theme, 8.0))
+                        .child(
+                            Button::new(SharedString::from(format!("assistant-more-{msg_idx}")))
+                                .ghost()
+                                .small()
+                                .text_color(theme.muted_foreground)
+                                .accessibility_label(if expanding {
+                                    "Expanding reply"
+                                } else if markdown_expanded {
+                                    "Show less"
+                                } else {
+                                    "Continue reading"
+                                })
+                                .disabled(expanding)
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    let _ = more_view.update(cx, |view, cx| {
+                                        view.markdown_expanded = !view.markdown_expanded;
+                                        if view.markdown_expanded {
+                                            view.schedule_markdown_hydration(cx);
+                                        } else {
+                                            view.rendered_markdown_blocks =
+                                                AssistantMessageView::initial_markdown_block_limit(
+                                                    view.state_key.content_markdown_blocks,
+                                                );
+                                        }
+                                        let msg_idx = view.msg_idx;
+                                        let panel = view.panel.clone();
+                                        let _ = panel.update(cx, |panel, cx| {
+                                            panel.remeasure_message(msg_idx);
+                                            cx.notify();
+                                        });
                                         cx.notify();
                                     });
-                                    cx.notify();
-                                });
-                            })
-                            .child(
-                                svg()
-                                    .path("phosphor/caret-down.svg")
-                                    .size(mono_space_px(theme, 10.0))
-                                    .text_color(theme.muted_foreground),
-                            )
-                            .child(
-                                div()
-                                    .text_size(mono_px(theme, 10.5))
-                                    .font_family(theme.mono_font_family.clone())
-                                    .text_color(theme.muted_foreground)
-                                    .child(if remaining == 1 {
-                                        "Show remaining block".to_owned()
-                                    } else {
-                                        format!("Show {remaining} more blocks")
-                                    }),
-                            ),
-                    ),
+                                })
+                                .child(
+                                    div()
+                                        .debug_selector(|| "assistant-more".into())
+                                        .flex()
+                                        .items_center()
+                                        .gap(ui_space_px(theme, 6.0))
+                                        .child(
+                                            svg()
+                                                .path(if markdown_expanded {
+                                                    "phosphor/caret-up.svg"
+                                                } else {
+                                                    "phosphor/caret-down.svg"
+                                                })
+                                                .size(mono_space_px(theme, 10.0))
+                                                .text_color(theme.muted_foreground),
+                                        )
+                                        .child(
+                                            div()
+                                                .text_size(ui_px(theme, 11.0))
+                                                .font_family(theme.font_family.clone())
+                                                .text_color(theme.muted_foreground)
+                                                .child(if expanding {
+                                                    "Showing more…"
+                                                } else if markdown_expanded {
+                                                    "Show less"
+                                                } else {
+                                                    "Continue reading"
+                                                }),
+                                        ),
+                                ),
+                        ),
                 );
             }
         } else {
             content_el = content_el.child(render_plain_multiline_text(
                 &msg.content,
-                theme.mono_font_family.clone(),
-                mono_px(theme, 14.0),
-                mono_px(theme, 23.0),
-                theme.foreground.opacity(0.88),
+                theme.font_family.clone(),
+                ui_px(theme, 14.0),
+                ui_px(theme, 23.0),
+                theme.foreground,
             ));
         }
 
-        msg_el = msg_el.child(content_el);
+        answer_el = answer_el.child(content_el);
 
         let select_mode = msg.select_mode;
         let select_panel = panel.clone();
-        msg_el = msg_el.child(
+        answer_el = answer_el.child(
             div()
-                .ml(px(19.0))
                 .mt(px(2.0))
                 .flex()
                 .items_center()
@@ -3559,7 +3622,7 @@ fn render_assistant_message(
                         .text_color(if select_mode {
                             theme.primary
                         } else {
-                            theme.muted_foreground.opacity(0.4)
+                            theme.muted_foreground
                         })
                         .tooltip(if select_mode {
                             "Exit text selection"
@@ -3575,8 +3638,8 @@ fn render_assistant_message(
         );
     }
 
-    if !msg.steps.is_empty() {
-        let step_count = msg.steps.len();
+    if !msg.steps.is_empty() || has_reasoning {
+        let step_count = msg.steps.len() + usize::from(has_reasoning);
         let collapsed = msg.steps_collapsed;
         let chevron = if collapsed {
             "phosphor/caret-right.svg"
@@ -3593,88 +3656,87 @@ fn render_assistant_message(
             .iter()
             .filter(|step| step.status == StepStatus::Denied)
             .count();
-        let run_title = if running_count > 0 {
-            "Working now"
+        let run_title = if running_count > 0 || is_streaming_assistant {
+            "Working".to_string()
         } else if denied_count > 0 {
-            "Run needs review"
+            "Needs review".to_string()
+        } else if let Some(duration) = msg.duration_ms {
+            format!("Worked for {}", format_duration_ms(duration))
         } else {
-            "Run trace"
+            "Activity".to_string()
         };
 
         let run_panel = panel.clone();
         let mut run_card = div()
             .debug_selector(|| "agent-run-card".into())
-            .ml(ui_space_px(theme, 19.0))
-            .mr(ui_space_px(theme, 4.0))
             .mt(ui_space_px(theme, 6.0))
-            .px(ui_space_px(theme, 10.0))
-            .py(ui_space_px(theme, 10.0))
+            .py(ui_space_px(theme, 4.0))
             .rounded(ui_space_px(theme, 12.0))
-            .bg(trace_group_surface(theme))
+            .bg(theme.transparent)
             .flex()
             .flex_col()
+            .items_start()
             .gap(ui_space_px(theme, 10.0));
 
+        let work_summary = div()
+            .debug_selector(|| "agent-run-summary".into())
+            .flex_none()
+            .text_size(ui_px(theme, 11.0))
+            .text_color(theme.muted_foreground)
+            .child(run_status_summary(step_count, 0, 0))
+            .into_any_element();
         run_card = run_card.child(
-            div()
-                .id(SharedString::from(format!("steps-toggle-{msg_idx}")))
-                .flex()
-                .items_center()
-                .min_w_0()
-                .gap(ui_space_px(theme, 8.0))
-                .px(ui_space_px(theme, 4.0))
-                .py(ui_space_px(theme, 3.0))
-                .cursor_pointer()
-                .rounded(ui_space_px(theme, 10.0))
-                .hover(|s| s.bg(theme.muted.opacity(0.035)))
-                .on_mouse_down(MouseButton::Left, move |_, _, cx| {
+            Button::new(SharedString::from(format!("steps-toggle-{msg_idx}")))
+                .ghost()
+                .max_w_full()
+                .h_auto()
+                .p_0()
+                .rounded(ui_space_px(theme, 8.0))
+                .text_color(theme.muted_foreground)
+                .accessibility_label(if collapsed {
+                    "Expand activity"
+                } else {
+                    "Collapse activity"
+                })
+                .on_click(move |_, _, cx| {
+                    cx.stop_propagation();
                     let _ = run_panel.update(cx, |this, cx| {
-                        if let Some(m) = this.state.messages.get_mut(msg_idx) {
-                            m.steps_collapsed = !m.steps_collapsed;
-                            m.touch();
+                        if let Some(message) = this.state.messages.get_mut(msg_idx) {
+                            message.steps_collapsed = !message.steps_collapsed;
+                            message.touch();
                         }
                         this.remeasure_message(msg_idx);
                         cx.notify();
                     });
                 })
                 .child(
-                    svg()
-                        .path(chevron)
-                        .size(ui_space_px(theme, 11.0))
-                        .text_color(theme.muted_foreground),
-                )
-                .child(
-                    div()
-                        .flex()
-                        .flex_col()
-                        .flex_1()
-                        .min_w_0()
-                        .gap(ui_space_px(theme, 2.0))
-                        .child(
-                            div()
-                                .debug_selector(|| "agent-run-title".into())
-                                .text_size(ui_px(theme, 12.75))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(theme.foreground)
-                                .child(run_title),
-                        )
-                        .child(
-                            div()
-                                .debug_selector(|| "agent-run-summary".into())
-                                .text_size(ui_px(theme, 11.0))
-                                .text_color(if denied_count > 0 {
-                                    theme.danger
-                                } else {
-                                    theme.muted_foreground
-                                })
-                                .min_w_0()
-                                .child(run_status_summary(step_count, running_count, denied_count)),
-                        ),
+                    activity_row_header(
+                        "work",
+                        Some(activity_icon(chevron, theme.muted_foreground, theme)),
+                        &run_title,
+                        None,
+                        vec![work_summary],
+                        if denied_count > 0 {
+                            theme.danger
+                        } else {
+                            theme.muted_foreground
+                        },
+                        theme,
+                    )
+                    .w_auto(),
                 ),
         );
 
         if !collapsed {
-            let mut steps_el = div().flex().flex_col().gap(ui_space_px(theme, 8.0));
+            let mut steps_el = div()
+                .w_full()
+                .pl(ui_space_px(theme, 12.0))
+                .flex()
+                .flex_col()
+                .gap(ui_space_px(theme, 4.0));
+            if has_reasoning {
+                steps_el = steps_el.child(reasoning_el);
+            }
 
             for (step_idx, step) in msg.steps.iter().enumerate() {
                 let icon_color = match step.status {
@@ -3692,123 +3754,86 @@ fn render_assistant_message(
                     (step.label.as_str(), None)
                 };
 
-                let mut top_line = div()
-                    .flex()
-                    .items_center()
-                    .gap(ui_space_px(theme, 6.0))
-                    .child(
-                        svg()
-                            .path(step.icon)
-                            .size(ui_space_px(theme, 12.0))
-                            .flex_shrink_0()
-                            .text_color(icon_color),
-                    )
-                    .child(
-                        div()
-                            .text_size(ui_px(theme, 12.5))
-                            .text_color(theme.foreground)
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(step_name.to_string()),
-                    )
-                    .child(div().flex_1());
-
+                let mut accessories = Vec::new();
                 if let Some(status_tag) = render_step_status_tag(step.status, theme) {
-                    top_line = top_line.child(status_tag);
+                    accessories.push(status_tag);
                 }
-
-                if let Some(dur) = step.duration {
-                    top_line = top_line.child(
+                if let Some(duration) = step.duration {
+                    accessories.push(
                         div()
-                            .flex_shrink_0()
-                            .text_size(mono_px(theme, 10.0))
-                            .font_family(theme.mono_font_family.clone())
+                            .flex_none()
+                            .text_size(ui_px(theme, 10.5))
+                            .font_family(theme.font_family.clone())
                             .text_color(theme.muted_foreground)
-                            .child(format_step_duration(dur)),
+                            .child(format_step_duration(duration))
+                            .into_any_element(),
                     );
                 }
-
                 if has_detail {
-                    top_line = top_line.child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(mono_space_px(theme, 4.0))
-                            .child(
-                                div()
-                                    .text_size(ui_px(theme, 11.0))
-                                    .font_family(theme.font_family.clone())
-                                    .text_color(theme.muted_foreground)
-                                    .child(if detail_collapsed { "Details" } else { "Hide" }),
-                            )
-                            .child(
-                                svg()
-                                    .path(if detail_collapsed {
-                                        "phosphor/caret-right.svg"
-                                    } else {
-                                        "phosphor/caret-down.svg"
-                                    })
-                                    .size(mono_space_px(theme, 10.0))
-                                    .flex_shrink_0()
-                                    .text_color(theme.muted_foreground),
-                            ),
-                    );
+                    accessories.push(activity_caret(!detail_collapsed, theme));
                 }
-
-                let mut step_header = div()
-                    .flex()
-                    .flex_col()
-                    .gap(ui_space_px(theme, 3.0))
-                    .px(ui_space_px(theme, 12.0))
-                    .py(ui_space_px(theme, 10.0))
-                    .child(top_line);
-
-                if let Some(detail_text) = step_detail {
-                    step_header = step_header.child(
-                        div()
-                            .ml(mono_space_px(theme, 18.0))
-                            .text_size(mono_px(theme, 10.5))
-                            .line_height(mono_px(theme, 15.0))
-                            .text_color(theme.muted_foreground)
-                            .font_family(theme.mono_font_family.clone())
-                            .overflow_x_hidden()
-                            .whitespace_nowrap()
-                            .child(truncate_str(detail_text, 84)),
-                    );
-                }
+                let step_header = activity_row_header(
+                    if has_detail { "tool" } else { "note" },
+                    has_detail.then(|| activity_icon(step.icon, icon_color, theme)),
+                    step_name,
+                    step_detail,
+                    accessories,
+                    if has_detail {
+                        theme.foreground
+                    } else {
+                        theme.muted_foreground
+                    },
+                    theme,
+                );
 
                 let mut step_shell = div()
                     .flex()
                     .flex_col()
-                    .rounded(ui_space_px(theme, 12.0))
+                    .rounded(ui_space_px(theme, 8.0))
                     .overflow_hidden()
-                    .bg(trace_step_surface(theme))
+                    .bg(theme.transparent)
                     .gap(px(0.0));
 
                 let step_header_shell = step_header
                     .bg(trace_step_header_surface(theme))
-                    .min_h(ui_space_px(theme, 44.0));
+                    .rounded(ui_space_px(theme, 8.0))
+                    .min_h(ui_space_px(theme, 32.0));
 
                 if has_detail {
                     let step_panel = panel.clone();
                     step_shell = step_shell.child(
-                        step_header_shell
-                            .id(SharedString::from(format!(
-                                "step-detail-{msg_idx}-{step_idx}"
-                            )))
-                            .cursor_pointer()
-                            .hover(|s| s.bg(trace_step_header_hover_surface(theme)))
-                            .on_mouse_down(MouseButton::Left, move |_, _, cx| {
-                                let _ = step_panel.update(cx, |this, cx| {
-                                    if let Some(m) = this.state.messages.get_mut(msg_idx)
-                                        && let Some(s) = m.steps.get_mut(step_idx)
-                                    {
-                                        s.detail_collapsed = !s.detail_collapsed;
-                                        m.touch();
-                                    }
-                                    this.remeasure_message(msg_idx);
-                                    cx.notify();
-                                });
-                            }),
+                        Button::new(SharedString::from(format!(
+                            "step-detail-{msg_idx}-{step_idx}"
+                        )))
+                        .ghost()
+                        .w_full()
+                        .h_auto()
+                        .p_0()
+                        .rounded(ui_space_px(theme, 8.0))
+                        .accessibility_label(format!(
+                            "{} {} details",
+                            if detail_collapsed {
+                                "Expand"
+                            } else {
+                                "Collapse"
+                            },
+                            step_name
+                        ))
+                        .tooltip(step.label.clone())
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            let _ = step_panel.update(cx, |this, cx| {
+                                if let Some(m) = this.state.messages.get_mut(msg_idx)
+                                    && let Some(s) = m.steps.get_mut(step_idx)
+                                {
+                                    s.detail_collapsed = !s.detail_collapsed;
+                                    m.touch();
+                                }
+                                this.remeasure_message(msg_idx);
+                                cx.notify();
+                            });
+                        })
+                        .child(step_header_shell.w_full()),
                     );
                 } else {
                     step_shell = step_shell.child(step_header_shell);
@@ -3824,7 +3849,8 @@ fn render_assistant_message(
                         result_preview(detail, TOOL_RESULT_PREVIEW_LINES)
                     };
                     let detail_block = div()
-                        .px(ui_space_px(theme, 12.0))
+                        .pl(ui_space_px(theme, 34.0))
+                        .pr(ui_space_px(theme, 10.0))
                         .pt(ui_space_px(theme, 4.0))
                         .bg(trace_detail_surface(theme))
                         .child(
@@ -3839,20 +3865,14 @@ fn render_assistant_message(
                             theme,
                             true,
                         ));
-                    step_shell = step_shell.child(
-                        detail_block.with_animation(
-                            SharedString::from(format!("step-detail-reveal-{msg_idx}-{step_idx}")),
-                            Animation::new(std::time::Duration::from_millis(170))
-                                .with_easing(ease_out_quint()),
-                            |this, delta| this.opacity(delta).pt(px((1.0 - delta) * 6.0)),
-                        ),
-                    );
+                    step_shell = step_shell.child(detail_block);
                     if is_expandable {
                         let expanded = step.detail_expanded;
                         let button_label = result_toggle_label(detail, expanded);
                         let detail_toggle_panel = panel.clone();
                         let detail_toggle = div()
-                            .px(ui_space_px(theme, 12.0))
+                            .pl(ui_space_px(theme, 34.0))
+                            .pr(ui_space_px(theme, 10.0))
                             .pt(ui_space_px(theme, 4.0))
                             .pb(ui_space_px(theme, 10.0))
                             .bg(trace_detail_surface(theme))
@@ -3862,10 +3882,8 @@ fn render_assistant_message(
                                         "step-detail-expand-{msg_idx}-{step_idx}"
                                     )))
                                     .cursor_pointer()
-                                    .hover(|s| {
-                                        s.bg(theme.muted.opacity(0.03))
-                                            .rounded(ui_space_px(theme, 6.0))
-                                    })
+                                    .rounded(ui_space_px(theme, 6.0))
+                                    .hover(|s| s.bg(trace_step_header_hover_surface(theme)))
                                     .on_mouse_down(MouseButton::Left, move |_, _, cx| {
                                         let _ = detail_toggle_panel.update(cx, |this, cx| {
                                             if let Some(message) =
@@ -3890,16 +3908,7 @@ fn render_assistant_message(
                                             )),
                                     ),
                             );
-                        step_shell = step_shell.child(
-                            detail_toggle.with_animation(
-                                SharedString::from(format!(
-                                    "step-detail-toggle-{msg_idx}-{step_idx}"
-                                )),
-                                Animation::new(std::time::Duration::from_millis(185))
-                                    .with_easing(ease_out_quint()),
-                                |this, delta| this.opacity(delta).pt(px((1.0 - delta) * 4.0)),
-                            ),
-                        );
+                        step_shell = step_shell.child(detail_toggle);
                     } else {
                         step_shell = step_shell.child(
                             div()
@@ -3913,16 +3922,15 @@ fn render_assistant_message(
                 steps_el = steps_el.child(step_shell);
             }
 
-            run_card = run_card.child(steps_el.with_animation(
-                SharedString::from(format!("steps-reveal-{msg_idx}")),
-                Animation::new(std::time::Duration::from_millis(190)).with_easing(ease_out_quint()),
-                |this, delta| this.opacity(delta).pt(px((1.0 - delta) * 8.0)),
-            ));
+            run_card = run_card.child(steps_el);
         }
 
         msg_el = msg_el.child(run_card);
     }
 
+    if !msg.content.is_empty() {
+        msg_el = msg_el.child(answer_el);
+    }
     msg_el.into_any_element()
 }
 
@@ -3939,7 +3947,7 @@ impl Render for AssistantMessageView {
             self.message.ensure_thinking_markdown();
         }
 
-        if self.is_streaming_assistant
+        if (self.is_streaming_assistant || self.markdown_expanded)
             && self.state_key.content_markdown_blocks > self.rendered_markdown_blocks
         {
             self.schedule_markdown_hydration(cx);
@@ -3963,6 +3971,7 @@ impl Render for AssistantMessageView {
             msg_idx,
             self.is_streaming_assistant,
             rendered_markdown_blocks,
+            self.markdown_expanded,
             rendered_markdown,
             theme,
         )
@@ -3990,7 +3999,7 @@ impl AgentPanel {
                     .px(ui_space_px(theme, 6.0))
                     .py(ui_space_px(theme, 8.0))
                     .text_size(ui_px(theme, 13.0))
-                    .text_color(theme.foreground.opacity(0.64))
+                    .text_color(theme.muted_foreground)
                     .line_height(ui_px(theme, 19.0))
                     .child(msg.content.clone()),
             );
@@ -4093,11 +4102,10 @@ impl AgentPanel {
                         .child(
                             div()
                                 .max_w(rems(22.0))
-                                .px(px(12.0))
-                                .py(px(8.0))
-                                .rounded(px(14.0))
-                                .rounded_tr(px(4.0))
-                                .bg(theme.primary.opacity(0.06))
+                                .px(ui_space_px(theme, 14.0))
+                                .py(ui_space_px(theme, 10.0))
+                                .rounded(ui_space_px(theme, 12.0))
+                                .bg(theme.foreground.opacity(0.045))
                                 .child(render_user_message_text(&user_content, msg_idx, theme)),
                         )
                         .child(
@@ -4192,39 +4200,11 @@ impl AgentPanel {
     }
 }
 
-impl Render for AgentPanel {
-    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        self.install_message_list_handler(cx);
-        self.sync_message_list_count();
-
+impl AgentPanel {
+    fn render_current_activity(&mut self, cx: &mut Context<Self>) -> AnyElement {
         let theme = cx.theme().clone();
         let theme = &theme;
-        let content_reveal = self.content_reveal.value(window, cx);
-
-        // ── Messages ──────────────────────────────────────────────
-        let total_messages = self.state.messages.len();
-        if self.assistant_message_views.len() > total_messages {
-            self.assistant_message_views.truncate(total_messages);
-        }
-        let messages_content = list(
-            self.message_list_state.clone(),
-            cx.processor(|this, msg_idx: usize, window, cx| {
-                div()
-                    .w_full()
-                    .pb(px(16.0))
-                    .child(this.render_message_item(msg_idx, window, cx))
-                    .into_any_element()
-            }),
-        )
-        .with_sizing_behavior(ListSizingBehavior::Auto)
-        .h_full()
-        .min_h_0()
-        .w_full()
-        .pt(px(12.0))
-        .pb(px(64.0))
-        .flex_grow_1();
-
-        let mut transcript_footer = div().flex().flex_col().gap(px(16.0));
+        let mut activity = div().flex().flex_col().gap(px(16.0));
 
         // ── Active tool calls (skip if awaiting approval — the card shows it) ──
         // Collect call_ids that have pending approvals to avoid duplicate rendering.
@@ -4248,52 +4228,43 @@ impl Render for AgentPanel {
                 .iter()
                 .filter(|(_, tc)| tc.result.is_none())
                 .count();
-            let mut tc_container = div()
-                .flex()
-                .flex_col()
-                .mx(ui_space_px(theme, 4.0))
-                .gap(ui_space_px(theme, 10.0))
-                .px(ui_space_px(theme, 10.0))
-                .py(ui_space_px(theme, 10.0))
-                .rounded(ui_space_px(theme, 12.0))
-                .bg(trace_group_surface(theme))
-                .child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .min_w_0()
-                        .gap(ui_space_px(theme, 8.0))
-                        .px(ui_space_px(theme, 4.0))
-                        .py(ui_space_px(theme, 3.0))
-                        .child(
-                            div()
-                                .flex()
-                                .flex_col()
-                                .flex_1()
-                                .min_w_0()
-                                .gap(ui_space_px(theme, 2.0))
-                                .child(
-                                    div()
-                                        .text_size(ui_px(theme, 12.75))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(theme.foreground)
-                                        .child("Tool activity"),
-                                ),
-                        )
-                        .child(render_inline_state(
-                            if running_count > 0 {
-                                format!("{running_count} running").into()
-                            } else {
-                                "Finished".into()
-                            },
-                            if running_count > 0 {
-                                theme.warning
-                            } else {
-                                theme.muted_foreground
-                            },
-                            theme,
-                        )),
-                );
+            let mut tc_container = div().flex().flex_col().gap(ui_space_px(theme, 8.0)).child(
+                div()
+                    .flex()
+                    .items_center()
+                    .min_w_0()
+                    .gap(ui_space_px(theme, 8.0))
+                    .px(ui_space_px(theme, 4.0))
+                    .py(ui_space_px(theme, 3.0))
+                    .child(
+                        div()
+                            .flex()
+                            .flex_col()
+                            .flex_1()
+                            .min_w_0()
+                            .gap(ui_space_px(theme, 2.0))
+                            .child(
+                                div()
+                                    .text_size(ui_px(theme, 12.75))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.foreground)
+                                    .child("Tool activity"),
+                            ),
+                    )
+                    .child(render_inline_state(
+                        if running_count > 0 {
+                            format!("{running_count} running").into()
+                        } else {
+                            "Finished".into()
+                        },
+                        if running_count > 0 {
+                            theme.warning
+                        } else {
+                            theme.muted_foreground
+                        },
+                        theme,
+                    )),
+            );
 
             for (tc_idx, tc) in visible_tool_calls {
                 let is_done = tc.result.is_some();
@@ -4307,79 +4278,40 @@ impl Render for AgentPanel {
                     theme.warning
                 };
 
-                // The activity strip owns animation; trace rows remain quiet.
-                let icon_el: AnyElement = {
-                    svg()
-                        .path(icon)
-                        .size(ui_space_px(theme, 12.0))
-                        .flex_shrink_0()
-                        .text_color(icon_color)
-                        .into_any_element()
-                };
-
-                let dur = tc.duration.unwrap_or_else(|| tc.started_at.elapsed());
-
-                // Two-line layout matching completed steps
-                let top_line = div()
-                    .flex()
-                    .items_center()
-                    .gap(ui_space_px(theme, 6.0))
-                    .child(icon_el)
-                    .child(
-                        div()
-                            .text_size(ui_px(theme, 12.5))
-                            .text_color(theme.foreground)
-                            .font_weight(FontWeight::MEDIUM)
-                            .child(human_name),
-                    )
-                    .child(div().flex_1()) // spacer
-                    .child(
-                        div()
-                            .flex_shrink_0()
-                            .text_size(mono_px(theme, 10.0))
-                            .font_family(theme.mono_font_family.clone())
-                            .text_color(theme.muted_foreground)
-                            .child(format_step_duration(dur)),
-                    );
-                let top_line = if is_done {
-                    top_line
-                } else {
-                    top_line.child(render_inline_state("Live".into(), theme.warning, theme))
-                };
-
-                let mut tc_row = div()
-                    .flex()
-                    .flex_col()
-                    .gap(ui_space_px(theme, 3.0))
-                    .px(ui_space_px(theme, 12.0))
-                    .py(ui_space_px(theme, 10.0))
-                    .child(top_line);
-
-                // Args on second line
-                if !args_display.is_empty() {
-                    tc_row = tc_row.child(
-                        div()
-                            .ml(mono_space_px(theme, 18.0))
-                            .text_size(mono_px(theme, 10.75))
-                            .text_color(theme.muted_foreground)
-                            .font_family(theme.mono_font_family.clone())
-                            .overflow_x_hidden()
-                            .whitespace_nowrap()
-                            .child(truncate_str(&args_display, 60)),
-                    );
+                let duration = tc.duration.unwrap_or_else(|| tc.started_at.elapsed());
+                let mut accessories = vec![
+                    div()
+                        .flex_none()
+                        .text_size(ui_px(theme, 10.5))
+                        .font_family(theme.font_family.clone())
+                        .text_color(theme.muted_foreground)
+                        .child(format_step_duration(duration))
+                        .into_any_element(),
+                ];
+                if !is_done {
+                    accessories.push(render_inline_state("Live".into(), theme.warning, theme));
                 }
+                let tc_row = activity_row_header(
+                    "live",
+                    Some(activity_icon(icon, icon_color, theme)),
+                    &human_name,
+                    (!args_display.is_empty()).then_some(args_display.as_str()),
+                    accessories,
+                    theme.foreground,
+                    theme,
+                );
 
                 let mut tc_el = div()
                     .flex()
                     .flex_col()
                     .rounded(ui_space_px(theme, 12.0))
                     .overflow_hidden()
-                    .bg(trace_step_surface(theme))
+                    .bg(theme.transparent)
                     .gap(px(0.0))
                     .child(
                         tc_row
                             .bg(trace_step_header_surface(theme))
-                            .min_h(ui_space_px(theme, 44.0)),
+                            .min_h(ui_space_px(theme, 32.0)),
                     );
 
                 // Result preview
@@ -4393,7 +4325,8 @@ impl Render for AgentPanel {
                     };
                     tc_el = tc_el.child(
                         div()
-                            .px(px(12.0))
+                            .pl(ui_space_px(theme, 34.0))
+                            .pr(ui_space_px(theme, 10.0))
                             .pt(px(10.0))
                             .bg(trace_detail_surface(theme))
                             .child(render_result_block(
@@ -4440,7 +4373,7 @@ impl Render for AgentPanel {
                 }
                 tc_container = tc_container.child(tc_el);
             }
-            transcript_footer = transcript_footer.child(tc_container);
+            activity = activity.child(tc_container);
         }
 
         // ── Pending approvals ───────────────────────────────────
@@ -4550,8 +4483,67 @@ impl Render for AgentPanel {
                             ),
                     );
 
-            transcript_footer = transcript_footer.child(approval_el);
+            activity = activity.child(approval_el);
         }
+
+        if self.state.pending_approvals.is_empty()
+            && let Some((_, label)) = self.status_text()
+        {
+            activity = activity.child(activity_row_header(
+                "status",
+                Some(self.busy_indicator.clone().into_any_element()),
+                label,
+                None,
+                Vec::new(),
+                theme.muted_foreground,
+                theme,
+            ));
+        }
+
+        div()
+            .debug_selector(|| "agent-current-activity".into())
+            .w_full()
+            .child(activity)
+            .into_any_element()
+    }
+}
+
+impl Render for AgentPanel {
+    fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        self.install_message_list_handler(cx);
+        self.sync_message_list_count();
+
+        let theme = cx.theme().clone();
+        let theme = &theme;
+        let content_reveal = self.content_reveal.value(window, cx);
+
+        // ── Messages ──────────────────────────────────────────────
+        let total_messages = self.state.messages.len();
+        if self.assistant_message_views.len() > total_messages {
+            self.assistant_message_views.truncate(total_messages);
+        }
+        let messages_content = list(
+            self.message_list_state.clone(),
+            cx.processor(|this, msg_idx: usize, window, cx| {
+                let content = if msg_idx == this.state.messages.len() {
+                    this.render_current_activity(cx)
+                } else {
+                    this.render_message_item(msg_idx, window, cx)
+                };
+                div()
+                    .w_full()
+                    .pb(px(16.0))
+                    .child(content)
+                    .into_any_element()
+            }),
+        )
+        .with_sizing_behavior(ListSizingBehavior::Auto)
+        .h_full()
+        .min_h_0()
+        .w_full()
+        .pt(px(12.0))
+        .pb(px(16.0))
+        .flex_grow_1();
 
         // ── Header ──────────────────────────────────────────────
         let control_icons = {
@@ -4568,6 +4560,9 @@ impl Render for AgentPanel {
                         .icon(Icon::default().path("phosphor/stop.svg"))
                         .ghost()
                         .xsmall()
+                        .size(ui_space_px(theme, 26.0))
+                        .rounded(ui_space_px(theme, 8.0))
+                        .text_color(theme.muted_foreground)
                         .tooltip("Stop")
                         .accessibility_label("Stop response")
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -4589,6 +4584,8 @@ impl Render for AgentPanel {
                         }))
                         .ghost()
                         .xsmall()
+                        .size(ui_space_px(theme, 26.0))
+                        .rounded(ui_space_px(theme, 8.0))
                         .text_color(if self.auto_approve {
                             theme.primary
                         } else {
@@ -4616,6 +4613,9 @@ impl Render for AgentPanel {
                         .icon(Icon::default().path("phosphor/clock-counter-clockwise.svg"))
                         .ghost()
                         .xsmall()
+                        .size(ui_space_px(theme, 26.0))
+                        .rounded(ui_space_px(theme, 8.0))
+                        .text_color(theme.muted_foreground)
                         .tooltip("History")
                         .accessibility_label("Conversation history")
                         .on_click(cx.listener(|this, _, _, cx| {
@@ -4627,7 +4627,10 @@ impl Render for AgentPanel {
                         .icon(Icon::default().path("phosphor/plus.svg"))
                         .ghost()
                         .xsmall()
-                        .tooltip("New Chat")
+                        .size(ui_space_px(theme, 26.0))
+                        .rounded(ui_space_px(theme, 8.0))
+                        .text_color(theme.muted_foreground)
+                        .tooltip("New conversation")
                         .accessibility_label("New conversation")
                         .on_click(cx.listener(|this, _, _, cx| {
                             cx.emit(NewConversation);
@@ -4654,10 +4657,9 @@ impl Render for AgentPanel {
             .ghost()
             .xsmall()
             .compact()
-            .h(ui_px(theme, 24.0))
-            .px(ui_space_px(theme, 6.0))
-            .rounded(ui_space_px(theme, 6.0))
-            .bg(theme.foreground.opacity(0.04))
+            .h(ui_px(theme, 26.0))
+            .px(ui_space_px(theme, 8.0))
+            .rounded(ui_space_px(theme, 8.0))
             .dropdown_caret(true)
             .tooltip(format!("Provider: {provider_label}"))
             .accessibility_label(format!("Provider: {provider_label}"))
@@ -4715,12 +4717,11 @@ impl Render for AgentPanel {
                     .ghost()
                     .xsmall()
                     .compact()
-                    .h(ui_px(theme, 24.0))
+                    .h(ui_px(theme, 26.0))
                     .px(ui_space_px(theme, 8.0))
-                    .rounded(ui_space_px(theme, 6.0))
+                    .rounded(ui_space_px(theme, 8.0))
                     .max_w_full()
                     .flex_shrink_1()
-                    .bg(theme.foreground.opacity(0.04))
                     .dropdown_caret(true)
                     .tooltip(if self.model_name.is_empty() {
                         "Choose a model".to_owned()
@@ -4774,41 +4775,6 @@ impl Render for AgentPanel {
             .child(model_picker);
         let header = header.child(control_icons);
 
-        let live_activity_strip = if let Some(approval) = self.state.pending_approvals.first() {
-            let args = format_tool_args(&approval.tool_name, &approval.args);
-            Some(render_live_activity(
-                "Awaiting approval",
-                Some(&args),
-                Some("phosphor/shield-warning-fill.svg"),
-                theme.warning,
-                theme,
-            ))
-        } else if let Some(tc) = self.running_tool_call() {
-            let args = format_tool_args(&tc.tool_name, &tc.args);
-            Some(render_live_activity(
-                self.status_text()
-                    .map_or("Running tool…", |(_, label)| label),
-                Some(&args),
-                None,
-                theme.warning,
-                theme,
-            ))
-        } else if let Some((_icon, label)) = self.status_text() {
-            Some(render_live_activity(
-                label,
-                None,
-                None,
-                if self.state.status == AgentStatus::Responding {
-                    theme.success
-                } else {
-                    theme.warning
-                },
-                theme,
-            ))
-        } else {
-            None
-        };
-
         // ── Panel ───────────────────────────────────────────────
         // Use system proportional font for readable prose — the workspace root
         // sets Ioskeley Mono which would cascade here without this override.
@@ -4825,10 +4791,6 @@ impl Render for AgentPanel {
             .font_family(theme.font_family.clone())
             .text_size(theme.font_size)
             .child(header);
-
-        if let Some(live_activity_strip) = live_activity_strip {
-            panel = panel.child(live_activity_strip);
-        }
 
         if self.showing_history {
             let mut history_content = div()
@@ -4950,6 +4912,7 @@ impl Render for AgentPanel {
             let show_jump_to_latest = self.follow_output == FollowOutputState::Detached
                 && !self.is_scrolled_near_bottom();
             let transcript_surface = div()
+                .debug_selector(|| "agent-transcript-viewport".into())
                 .relative()
                 .flex_1()
                 .min_h_0()
@@ -4970,81 +4933,47 @@ impl Render for AgentPanel {
                 .min_h_0()
                 .child(transcript_surface);
 
-            messages_container = messages_container.child(
-                div()
-                    .relative()
-                    .flex_shrink_0()
-                    .max_h(px(320.0))
-                    .min_h_0()
-                    .pl(px(16.0))
-                    .pr(px(22.0))
-                    .pb(px(12.0))
-                    .child(
-                        div()
-                            .id("agent-transcript-footer")
-                            .debug_selector(|| "agent-transcript-footer".into())
-                            .w_full()
-                            .max_h(px(320.0))
-                            .overflow_y_scroll()
-                            .track_scroll(&self.transcript_footer_scroll_handle)
-                            .child(
-                                transcript_footer
-                                    .opacity(content_reveal)
-                                    .pt(vertical_reveal_offset(content_reveal, 10.0)),
-                            ),
-                    )
-                    .vertical_scrollbar(&self.transcript_footer_scroll_handle),
-            );
-
             if show_jump_to_latest {
                 messages_container = messages_container.child(
-                    div()
-                        .absolute()
-                        .right(px(14.0))
-                        .bottom(if self.show_inline_input {
-                            px(66.0)
-                        } else {
-                            px(14.0)
-                        })
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(6.0))
-                                .px(px(10.0))
-                                .py(px(5.0))
-                                .rounded_full()
-                                .cursor_pointer()
-                                .bg(theme.title_bar.opacity(0.84))
-                                .hover(|s| {
-                                    s.bg(theme.title_bar.opacity(0.94))
-                                        .text_color(theme.foreground.opacity(0.96))
-                                })
-                                .on_mouse_down(
-                                    MouseButton::Left,
-                                    cx.listener(|this, _, _, cx| {
-                                        this.follow_output = FollowOutputState::PendingJump;
-                                        this.scroll_to_bottom();
-                                        cx.notify();
-                                    }),
-                                )
-                                .child(div().w(px(10.0)).h(px(10.0)).flex_shrink_0())
-                                .child(
-                                    div()
-                                        .text_size(px(10.5))
-                                        .line_height(px(11.0))
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .text_color(theme.foreground.opacity(0.86))
-                                        .child("Latest"),
-                                )
-                                .child(
-                                    svg()
-                                        .path("phosphor/arrow-line-down.svg")
-                                        .size(ui_icon_px(theme, 10.0))
-                                        .flex_shrink_0()
-                                        .text_color(theme.muted_foreground.opacity(0.8)),
-                                ),
-                        ),
+                    div().absolute().right(px(14.0)).bottom(px(14.0)).child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .px(px(10.0))
+                            .py(px(5.0))
+                            .rounded_full()
+                            .cursor_pointer()
+                            .bg(theme.title_bar.opacity(0.84))
+                            .hover(|s| {
+                                s.bg(theme.title_bar.opacity(0.94))
+                                    .text_color(theme.foreground.opacity(0.96))
+                            })
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    this.follow_output = FollowOutputState::PendingJump;
+                                    this.scroll_to_bottom();
+                                    cx.notify();
+                                }),
+                            )
+                            .child(div().w(px(10.0)).h(px(10.0)).flex_shrink_0())
+                            .child(
+                                div()
+                                    .text_size(px(10.5))
+                                    .line_height(px(11.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.foreground.opacity(0.86))
+                                    .child("Latest"),
+                            )
+                            .child(
+                                svg()
+                                    .path("phosphor/arrow-line-down.svg")
+                                    .size(ui_icon_px(theme, 10.0))
+                                    .flex_shrink_0()
+                                    .text_color(theme.muted_foreground.opacity(0.8)),
+                            ),
+                    ),
                 );
             }
 
@@ -5078,10 +5007,11 @@ impl Render for AgentPanel {
 
             panel = panel.child(
                 div()
-                    .absolute()
-                    .left(mono_space_px(theme, 8.0))
-                    .right(mono_space_px(theme, 8.0))
-                    .bottom(mono_space_px(theme, 8.0))
+                    .w_full()
+                    .flex_shrink_0()
+                    .px(mono_space_px(theme, 12.0))
+                    .pt(mono_space_px(theme, 8.0))
+                    .pb(mono_space_px(theme, 8.0))
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                         let key = event.keystroke.key.as_str();
                         let has_completions = !this.filtered_inline_skills(cx).is_empty();
@@ -5127,7 +5057,7 @@ impl Render for AgentPanel {
                             .w_full()
                             .min_h(mono_space_px(theme, 46.0))
                             .gap(mono_space_px(theme, 8.0))
-                            .pl(mono_space_px(theme, 4.0))
+                            .pl(mono_space_px(theme, 8.0))
                             .pr(mono_space_px(theme, 8.0))
                             .py(mono_space_px(theme, 8.0))
                             .rounded(mono_space_px(theme, 12.0))
@@ -5213,26 +5143,203 @@ mod tests {
     use con_agent::{AgentConfig, ProviderConfig, ProviderKind};
     use con_core::terminal_status::Activity;
 
-    struct ActivityTestView;
-
-    impl gpui::Render for ActivityTestView {
-        fn render(
-            &mut self,
-            _window: &mut gpui::Window,
-            cx: &mut gpui::Context<Self>,
-        ) -> impl gpui::IntoElement {
-            use gpui::{ParentElement, Styled};
-            use gpui_component::ActiveTheme;
-            gpui::div().size_full().flex().flex_col().child(
-                super::render_live_activity(
-                    "Waiting for the remote build to finish",
-                    Some("服务器 /workspace/a-long-project-directory/build --configuration release --target integration"),
-                    Some("phosphor/hourglass-fill.svg"),
-                    cx.theme().warning,
-                    cx.theme(),
-                ),
-            )
+    #[gpui::test]
+    fn expanding_retained_markdown_updates_the_virtualized_row(cx: &mut gpui::TestAppContext) {
+        use std::sync::Arc;
+        con_core::release_channel::init();
+        cx.update(gpui_component::init);
+        let content = (0..15)
+            .map(|i| format!("Paragraph {i}.\n\n"))
+            .collect::<String>();
+        let parsed = Arc::new(super::ParsedChatMarkdown::parse(&content));
+        assert_eq!(parsed.block_count(), 15);
+        let (panel, window) = cx.add_window_view(|window, cx| {
+            let mut panel = AgentPanel::new(window, cx);
+            panel.add_message("assistant", &content, cx);
+            let message = panel.state.messages.last_mut().unwrap();
+            message.content_markdown_len = content.len();
+            message.content_markdown = Some(parsed);
+            panel
+        });
+        window.simulate_resize(gpui::size(gpui::px(500.0), gpui::px(1000.0)));
+        let more = window
+            .debug_bounds("assistant-more")
+            .expect("expand control");
+        let before_height = window
+            .debug_bounds("assistant-markdown")
+            .unwrap()
+            .size
+            .height;
+        window.update(|_, cx| {
+            let panel = panel.read(cx);
+            assert!(panel.assistant_message_views.last().unwrap().is_some());
+        });
+        window.simulate_click(more.center(), gpui::Modifiers::default());
+        for _ in 0..2 {
+            window.run_until_parked();
+            window
+                .executor()
+                .advance_clock(std::time::Duration::from_millis(8));
+            window.run_until_parked();
         }
+        window.update(|_, cx| {
+            let panel = panel.read(cx);
+            let view = panel
+                .assistant_message_views
+                .last()
+                .unwrap()
+                .as_ref()
+                .expect("retained view after click")
+                .read(cx);
+            assert_eq!(view.rendered_markdown_blocks, 15);
+            assert_eq!(view.markdown_block_views.len(), 15);
+        });
+        assert!(
+            window
+                .debug_bounds("assistant-markdown")
+                .unwrap()
+                .size
+                .height
+                > before_height
+        );
+        let less = window
+            .debug_bounds("assistant-more")
+            .expect("collapse remains available");
+        window.simulate_click(less.center(), gpui::Modifiers::default());
+        window.update(|_, cx| {
+            let view = panel
+                .read(cx)
+                .assistant_message_views
+                .last()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .read(cx);
+            assert_eq!(view.rendered_markdown_blocks, 8);
+            assert!(!view.markdown_expanded);
+        });
+    }
+
+    #[gpui::test]
+    fn streaming_markdown_hydrates_without_a_manual_disclosure(cx: &mut gpui::TestAppContext) {
+        con_core::release_channel::init();
+        cx.update(gpui_component::init);
+        let content = (0..15)
+            .map(|i| format!("Live paragraph {i}.\n\n"))
+            .collect::<String>();
+        let (panel, window) = cx.add_window_view(|window, cx| {
+            let mut panel = AgentPanel::new(window, cx);
+            panel.update_streaming(&content, cx);
+            panel
+        });
+        window.simulate_resize(gpui::size(gpui::px(500.0), gpui::px(1000.0)));
+        for _ in 0..4 {
+            window.run_until_parked();
+            window
+                .executor()
+                .advance_clock(std::time::Duration::from_millis(8));
+            window.run_until_parked();
+        }
+        window.update(|_, cx| {
+            let panel = panel.read(cx);
+            assert!(panel.state.streaming);
+            let view = panel
+                .assistant_message_views
+                .last()
+                .unwrap()
+                .as_ref()
+                .unwrap()
+                .read(cx);
+            assert_eq!(view.rendered_markdown_blocks, 15);
+            assert_eq!(view.markdown_block_views.len(), 15);
+        });
+        assert!(window.debug_bounds("assistant-more").is_none());
+    }
+
+    #[gpui::test]
+    fn submission_shows_feedback_before_any_harness_event(cx: &mut gpui::TestAppContext) {
+        con_core::release_channel::init();
+        cx.update(gpui_component::init);
+        let (panel, view) = cx.add_window_view(AgentPanel::new);
+        view.simulate_resize(gpui::size(gpui::px(320.0), gpui::px(640.0)));
+        view.update(|_, cx| {
+            panel.update(cx, |panel, cx| {
+                panel.add_message("user", "Check the repository.", cx);
+                assert_eq!(panel.status_text().unwrap().1, "Working…");
+                assert!(!panel.state.streaming);
+                assert_eq!(
+                    panel.state.activity(),
+                    con_core::terminal_status::Activity::Busy
+                );
+            })
+        });
+        view.run_until_parked();
+        assert!(view.debug_bounds("busy-bars").is_some());
+        assert!(view.debug_bounds("agent-status-label").is_some());
+        view.update(|_, cx| {
+            panel.update(cx, |panel, cx| {
+                panel.update_streaming("The repository", cx);
+                assert_eq!(panel.status_text().unwrap().1, "Writing…");
+            })
+        });
+        view.run_until_parked();
+        assert!(view.debug_bounds("busy-bars").is_some());
+        view.update(|_, cx| {
+            panel.update(cx, |panel, cx| {
+                panel.stop(cx);
+            })
+        });
+        view.run_until_parked();
+        assert!(view.debug_bounds("busy-bars").is_none());
+        assert!(view.debug_bounds("agent-status-label").is_none());
+    }
+
+    #[test]
+    fn awaiting_response_clears_on_error_completion_and_restore() {
+        let mut state = super::PanelState::new();
+        state.add_message("user", "Check the repository.");
+        assert_eq!(state.status, super::AgentStatus::AwaitingResponse);
+        state.apply_event(con_core::harness::HarnessEvent::Error("Offline".into()));
+        assert_eq!(state.status, super::AgentStatus::Idle);
+        state.add_message("user", "Try again.");
+        state.complete_response("Done.", None, None);
+        assert_eq!(state.status, super::AgentStatus::Idle);
+        state.restore_message("user", "An old request.", None, None);
+        assert_eq!(state.status, super::AgentStatus::Idle);
+    }
+
+    #[gpui::test]
+    fn status_uses_shared_busy_bars_and_disappears_when_idle(cx: &mut gpui::TestAppContext) {
+        con_core::release_channel::init();
+        cx.update(gpui_component::init);
+        let (panel, view) = cx.add_window_view(|window, cx| {
+            let mut panel = AgentPanel::new(window, cx);
+            panel.state.status = super::AgentStatus::Thinking;
+            panel
+        });
+        view.simulate_resize(gpui::size(gpui::px(280.0), gpui::px(640.0)));
+        for status in [super::AgentStatus::Thinking, super::AgentStatus::Responding] {
+            view.update(|_, cx| {
+                panel.update(cx, |panel, cx| {
+                    panel.state.status = status;
+                    cx.notify();
+                })
+            });
+            view.run_until_parked();
+            let bars = view.debug_bounds("busy-bars").unwrap();
+            let label = view.debug_bounds("agent-status-label").unwrap();
+            assert!((bars.center().y - label.center().y).abs() <= gpui::px(0.5));
+            assert!(bars.right() < label.left());
+        }
+        view.update(|_, cx| {
+            panel.update(cx, |panel, cx| {
+                panel.state.status = super::AgentStatus::Idle;
+                cx.notify();
+            })
+        });
+        view.run_until_parked();
+        assert!(view.debug_bounds("busy-bars").is_none());
+        assert!(view.debug_bounds("agent-status-label").is_none());
     }
 
     #[gpui::test]
@@ -5240,26 +5347,27 @@ mod tests {
         cx: &mut gpui::TestAppContext,
     ) {
         use gpui::{px, size};
+        con_core::release_channel::init();
         cx.update(gpui_component::init);
         for (font_size, width) in [(16.0, 280.0), (16.0, 640.0), (24.0, 280.0)] {
             let (_, view) = cx.add_window_view(|window, cx| {
                 gpui_component::Theme::update(cx, |theme| theme.font_size = px(font_size));
                 window.set_rem_size(px(font_size));
-                ActivityTestView
+                let mut panel = AgentPanel::new(window, cx);
+                panel.state.add_tool_call("layout-test", "terminal_exec",
+                    r#"{"command":"服务器 /workspace/a-long-project-directory/build --configuration release"}"#);
+                panel
             });
-            view.simulate_resize(size(px(width), px(480.0)));
-            let strip = view.debug_bounds("agent-live-activity").unwrap();
+            view.simulate_resize(size(px(width), px(800.0)));
+            let strip = view.debug_bounds("agent-current-activity").unwrap();
             let label = view.debug_bounds("agent-live-label").unwrap();
             let detail = view.debug_bounds("agent-live-detail").unwrap();
             assert!(strip.left() > px(0.0));
             assert!(strip.right() < px(width));
-            assert_eq!(label.left(), detail.left());
-            assert!(label.bottom() < detail.top());
-            assert!(detail.right() < strip.right());
-            assert!(detail.bottom() < strip.bottom());
-            if width == 280.0 {
-                assert!(label.size.height > px(18.0));
-            }
+            assert!(label.right() <= detail.left());
+            assert_eq!(label.center().y, detail.center().y);
+            assert!(detail.right() <= strip.right());
+            assert!(detail.bottom() <= strip.bottom());
         }
     }
 
@@ -5288,9 +5396,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn run_trace_header_keeps_counts_below_the_title_in_narrow_panels(
-        cx: &mut gpui::TestAppContext,
-    ) {
+    fn activity_header_keeps_title_and_count_inside_narrow_panels(cx: &mut gpui::TestAppContext) {
         con_core::release_channel::init();
         cx.update(gpui_component::init);
         let (_panel, view) = cx.add_window_view(|window, cx| {
@@ -5304,18 +5410,97 @@ mod tests {
         });
         view.simulate_resize(gpui::size(gpui::px(280.0), gpui::px(640.0)));
         let card = view.debug_bounds("agent-run-card").unwrap();
+        let answer = view.debug_bounds("agent-answer").unwrap();
+        assert!(
+            card.bottom() <= answer.top(),
+            "activity must precede the final reply"
+        );
         let title = view.debug_bounds("agent-run-title").unwrap();
         let summary = view.debug_bounds("agent-run-summary").unwrap();
-        assert_eq!(title.left(), summary.left());
-        assert!(title.bottom() < summary.top());
+        assert!(title.right() <= summary.left());
+        assert!(title.top() >= card.top());
+        assert!(summary.bottom() <= card.bottom());
         assert!(title.right() < card.right());
         assert!(summary.right() < card.right());
     }
 
     #[gpui::test]
-    fn approval_footer_has_intrinsic_height_without_a_fixed_parent_height(
+    fn reasoning_and_tool_headers_share_columns_at_narrow_and_scaled_widths(
         cx: &mut gpui::TestAppContext,
     ) {
+        con_core::release_channel::init();
+        cx.update(gpui_component::init);
+        for (font_size, width) in [(16.0, 280.0), (16.0, 640.0), (24.0, 280.0)] {
+            let (_, view) = cx.add_window_view(|window, cx| {
+                gpui_component::Theme::update(cx, |theme| theme.font_size = gpui::px(font_size));
+                window.set_rem_size(gpui::px(font_size));
+                let mut panel = AgentPanel::new(window, cx);
+                panel
+                    .state
+                    .update_thinking("Check the repository before running the build.");
+                panel.state.add_tool_call(
+                    "build",
+                    "terminal_exec",
+                    r#"{"command":"cargo build --release"}"#,
+                );
+                panel.state.complete_tool_call("build", "Build complete.");
+                panel
+                    .state
+                    .complete_response("The build passed.", None, None);
+                panel.state.messages.last_mut().unwrap().steps_collapsed = false;
+                panel
+            });
+            view.simulate_resize(gpui::size(gpui::px(width), gpui::px(800.0)));
+            let reasoning_icon = view.debug_bounds("agent-reasoning-icon").unwrap();
+            let tool_icon = view.debug_bounds("agent-tool-icon").unwrap();
+            let reasoning_label = view.debug_bounds("agent-reasoning-label").unwrap();
+            let tool_label = view.debug_bounds("agent-tool-label").unwrap();
+            assert_eq!(reasoning_icon.left(), tool_icon.left());
+            assert_eq!(reasoning_label.left(), tool_label.left());
+            // GPUI rounds the differently sized icon and text boxes to pixels.
+            assert!(
+                (reasoning_icon.center().y - reasoning_label.center().y).abs() <= gpui::px(0.5)
+            );
+            assert!((tool_icon.center().y - tool_label.center().y).abs() <= gpui::px(0.5));
+            assert_eq!(reasoning_label.size.height, tool_label.size.height);
+            assert!(view.debug_bounds("agent-tool-detail").unwrap().right() < gpui::px(width));
+        }
+    }
+
+    #[gpui::test]
+    fn reasoning_only_reply_expands_inside_the_activity_group(cx: &mut gpui::TestAppContext) {
+        con_core::release_channel::init();
+        cx.update(gpui_component::init);
+        let (panel, view) = cx.add_window_view(|window, cx| {
+            let mut panel = AgentPanel::new(window, cx);
+            panel
+                .state
+                .update_thinking("First check the repository state.");
+            panel
+                .state
+                .complete_response("The repository is clean.", None, None);
+            panel
+        });
+        view.simulate_resize(gpui::size(gpui::px(500.0), gpui::px(800.0)));
+        assert!(view.debug_bounds("agent-reasoning-toggle").is_none());
+        let title = view.debug_bounds("agent-run-title").unwrap();
+        view.simulate_click(title.center(), gpui::Modifiers::default());
+        view.run_until_parked();
+        let reasoning = view.debug_bounds("agent-reasoning-toggle").unwrap();
+        view.simulate_click(reasoning.center(), gpui::Modifiers::default());
+        view.run_until_parked();
+        let content = view.debug_bounds("agent-reasoning-content").unwrap();
+        let answer = view.debug_bounds("agent-answer").unwrap();
+        assert!(content.bottom() <= answer.top());
+        view.update(|_, cx| {
+            let message = panel.read(cx).state.messages.last().unwrap();
+            assert!(!message.steps_collapsed);
+            assert!(!message.thinking_collapsed);
+        });
+    }
+
+    #[gpui::test]
+    fn approval_row_has_intrinsic_height_inside_the_transcript(cx: &mut gpui::TestAppContext) {
         con_core::release_channel::init();
         cx.update(gpui_component::init);
         let (_panel, view) = cx.add_window_view(|window, cx| {
@@ -5324,13 +5509,51 @@ mod tests {
             panel
         });
         view.simulate_resize(gpui::size(gpui::px(320.0), gpui::px(640.0)));
-        let footer = view.debug_bounds("agent-transcript-footer").unwrap();
+        let footer = view.debug_bounds("agent-current-activity").unwrap();
         assert!(
             footer.size.height > gpui::px(40.0),
             "approval actions collapsed: {footer:?}"
         );
         assert!(footer.size.height <= gpui::px(320.0));
         assert!(footer.bottom() <= gpui::px(640.0));
+    }
+
+    #[gpui::test]
+    fn completed_reply_replaces_live_activity_at_the_same_list_index(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        con_core::release_channel::init();
+        cx.update(gpui_component::init);
+        let (panel, view) = cx.add_window_view(|window, cx| {
+            let mut panel = AgentPanel::new(window, cx);
+            panel.state.add_message("user", "Check the working tree.");
+            panel.state.add_tool_call("check", "shell_exec", "{}");
+            panel
+        });
+        view.simulate_resize(gpui::size(gpui::px(500.0), gpui::px(1000.0)));
+        assert!(view.debug_bounds("agent-current-activity").is_some());
+        let before = view.update(|_, cx| panel.read(cx).message_list_state.item_count());
+        view.update(|_, cx| {
+            panel.update(cx, |panel, cx| {
+                panel.state.complete_tool_call("check", "clean");
+                panel
+                    .state
+                    .complete_response("The working tree is clean.", None, None);
+                panel.sync_message_list_count();
+                cx.notify();
+            });
+        });
+        view.run_until_parked();
+        assert!(view.debug_bounds("agent-current-activity").is_none());
+        assert!(view.debug_bounds("agent-answer").is_some());
+        view.update(|_, cx| {
+            let panel = panel.read(cx);
+            assert_eq!(before, panel.message_list_state.item_count());
+            assert_eq!(
+                panel.message_list_state.item_count(),
+                panel.state.messages.len()
+            );
+        });
     }
 
     fn pending_approval(
@@ -5459,6 +5682,11 @@ mod tests {
                 });
             });
             let surface = view.debug_bounds("agent-composer-surface").unwrap();
+            let transcript = view.debug_bounds("agent-transcript-viewport").unwrap();
+            assert!(
+                transcript.bottom() <= surface.top(),
+                "the input must reserve layout space, not cover messages"
+            );
             let field = view.debug_bounds("agent-composer-field").unwrap();
             let send = view.debug_bounds("agent-composer-send").unwrap();
             assert!(surface.left() > gpui::px(0.0));

@@ -308,8 +308,8 @@ impl<'a> ChatMarkdownStyle<'a> {
                 base_line_height: ui_px(theme, 24.0),
                 code_font_size: theme.mono_font_size,
                 code_line_height: mono_px(theme, 21.0),
-                text_color: theme.foreground.opacity(0.88),
-                muted_text_color: theme.muted_foreground.opacity(0.74),
+                text_color: theme.foreground,
+                muted_text_color: theme.muted_foreground,
                 inline_code_background: theme
                     .secondary_active
                     .mix_oklab(theme.background, 0.26)
@@ -325,7 +325,7 @@ impl<'a> ChatMarkdownStyle<'a> {
                     .secondary_active
                     .mix_oklab(theme.background, 0.24)
                     .opacity(0.92),
-                code_block_language_text_color: theme.foreground.opacity(0.74),
+                code_block_language_text_color: theme.muted_foreground,
                 quote_background: theme.secondary.opacity(0.68),
                 quote_tint: theme.primary.opacity(0.34),
                 rule_color: theme.muted_foreground.opacity(0.16),
@@ -344,8 +344,8 @@ impl<'a> ChatMarkdownStyle<'a> {
                 base_line_height: ui_px(theme, 20.0),
                 code_font_size: theme.mono_font_size,
                 code_line_height: mono_px(theme, 19.0),
-                text_color: theme.muted_foreground.opacity(0.66),
-                muted_text_color: theme.muted_foreground.opacity(0.58),
+                text_color: theme.muted_foreground,
+                muted_text_color: theme.muted_foreground,
                 inline_code_background: theme
                     .secondary_active
                     .mix_oklab(theme.background, 0.20)
@@ -361,7 +361,7 @@ impl<'a> ChatMarkdownStyle<'a> {
                     .secondary_active
                     .mix_oklab(theme.background, 0.18)
                     .opacity(0.82),
-                code_block_language_text_color: theme.foreground.opacity(0.68),
+                code_block_language_text_color: theme.muted_foreground,
                 quote_background: theme.secondary.opacity(0.46),
                 quote_tint: theme.primary.opacity(0.24),
                 rule_color: theme.muted_foreground.opacity(0.12),
@@ -2207,18 +2207,14 @@ fn render_code_block(
         .gap(px(8.0))
         .child(
             div()
-                .px(px(8.0))
-                .py(px(4.0))
-                .rounded(px(8.0))
-                .bg(style.code_block_language_background)
-                .font_family(style.theme.mono_font_family.clone())
+                .font_family(style.theme.font_family.clone())
                 .font_weight(FontWeight::MEDIUM)
                 .text_size(px(10.5))
-                .line_height(px(11.0))
+                .line_height(px(16.0))
                 .text_color(style.code_block_language_text_color)
                 .child(header_label),
         )
-        .child(div().h(px(1.0)).flex_1().bg(style.rule_color.opacity(0.36)))
+        .child(div().flex_1())
         .child(Clipboard::new(copy_id.clone()).value(SharedString::from(code.to_string())));
 
     let block = div()
@@ -2226,24 +2222,9 @@ fn render_code_block(
         .flex()
         .flex_col()
         .overflow_hidden()
-        .rounded(px(13.0))
-        .bg(style.code_block_background.opacity(0.98))
-        .p(px(1.0))
-        .child(
-            div()
-                .overflow_hidden()
-                .rounded(px(12.0))
-                .bg(style
-                    .code_block_background
-                    .mix_oklab(style.code_block_body_background, 0.82))
-                .child(
-                    div()
-                        .px(px(14.0))
-                        .pt(px(10.0))
-                        .pb(px(8.0))
-                        .child(header_row),
-                ),
-        );
+        .rounded(px(10.0))
+        .bg(style.code_block_body_background)
+        .child(div().px(px(12.0)).pt(px(6.0)).pb(px(4.0)).child(header_row));
 
     let (code_text, code_runs) =
         cached_highlighted_code_runs(code, language, highlight_cache, style);
@@ -2253,12 +2234,12 @@ fn render_code_block(
         .font_family(style.theme.mono_font_family.clone())
         .text_size(style.code_font_size)
         .line_height(style.code_line_height)
-        .text_color(style.text_color.opacity(0.96))
+        .text_color(style.text_color)
         .child(StyledText::new(code_text).with_runs(code_runs));
 
     block
         .child(
-            div().px(px(10.0)).pb(px(10.0)).child(
+            div().px(px(12.0)).pb(px(12.0)).child(
                 // Stateful scroll container (id + overflow_x_scroll like the
                 // table) so long lines scroll horizontally; the nowrap column
                 // sizes to its intrinsic width and becomes the scroll extent.
@@ -2268,10 +2249,6 @@ fn render_code_block(
                     .w_full()
                     .flex()
                     .overflow_x_scroll()
-                    .rounded(px(10.0))
-                    .bg(style.code_block_body_background.opacity(0.985))
-                    .px(px(12.0))
-                    .py(px(11.0))
                     .child(code_column),
             ),
         )

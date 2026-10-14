@@ -890,8 +890,8 @@ impl Render for ConWorkspace {
                         div()
                             .absolute()
                             .top_0()
-                            .left(px(12.0))
-                            .right(px(12.0))
+                            .left_0()
+                            .right_0()
                             .h(px(1.0))
                             .bg(chrome_edge_color),
                     )
@@ -905,7 +905,7 @@ impl Render for ConWorkspace {
                             .child(
                                 div()
                                     .absolute()
-                                    .top(px(12.0))
+                                    .top_0()
                                     .bottom_0()
                                     .left_0()
                                     .w(px(1.0))

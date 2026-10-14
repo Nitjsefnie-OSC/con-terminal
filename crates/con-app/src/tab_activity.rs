@@ -1,4 +1,4 @@
-//! One retained activity overlay per tab chrome group.
+//! Retained activity animation shared by tab chrome and chat status.
 
 use std::{
     cell::{Cell, RefCell},
@@ -8,10 +8,11 @@ use std::{
 
 use con_core::terminal_status::{Activity, Status};
 use gpui::{
-    Animation, AnimationExt, AnyElement, Bounds, ContentMask, Context, Hsla, InteractiveElement,
-    IntoElement, ParentElement, PathBuilder, Pixels, Render, Styled, Window, canvas, div, point,
-    px, svg,
+    Animation, AnimationExt, AnyElement, AppContext, Bounds, ContentMask, Context, Hsla,
+    InteractiveElement, IntoElement, ParentElement, PathBuilder, Pixels, Render, Styled, Window,
+    canvas, div, point, px, svg,
 };
+use gpui_component::ActiveTheme;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ActivityVisual {
@@ -78,6 +79,36 @@ struct Markers {
 #[derive(Default)]
 pub(crate) struct TabActivity {
     markers: Rc<RefCell<Markers>>,
+}
+
+/// A standalone marker sharing the tabs' retained animation renderer.
+pub(crate) struct BusyIndicator {
+    layer: gpui::Entity<TabActivity>,
+}
+
+impl BusyIndicator {
+    pub(crate) fn new(window: &mut Window, cx: &mut Context<Self>) -> Self {
+        Self {
+            layer: cx.new(|cx| TabActivity::new(window, cx)),
+        }
+    }
+}
+
+impl Render for BusyIndicator {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let size = crate::ui_scale::ui_icon_px(theme, 16.0);
+        let layer = self.layer.read(cx);
+        layer.clear();
+        let marker = layer.register(theme.muted_foreground, ActivityVisual::BusyBars);
+        div()
+            .debug_selector(|| "busy-bars".into())
+            .relative()
+            .flex_none()
+            .size(size)
+            .child(marker.size_full())
+            .child(self.layer.clone())
+    }
 }
 
 impl TabActivity {
@@ -399,6 +430,52 @@ mod tests {
             }
         }
         assert!(super::busy_bar_strength(0.0, 0, false) < super::busy_bar_strength(0.0, 1, false));
+    }
+
+    #[gpui::test]
+    fn standalone_busy_bars_schedule_one_frame_per_tick(cx: &mut gpui::TestAppContext) {
+        struct Host {
+            panel: gpui::Entity<Parent>,
+        }
+        impl Render for Host {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                // Match the fixed-size cached panel boundary in the workspace.
+                div().size_full().child(
+                    self.panel
+                        .clone()
+                        .cached(gpui::StyleRefinement::default().size_full()),
+                )
+            }
+        }
+        struct Parent {
+            indicator: gpui::Entity<super::BusyIndicator>,
+            renders: Rc<Cell<usize>>,
+        }
+        impl Render for Parent {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                self.renders.set(self.renders.get() + 1);
+                div().size_full().child(self.indicator.clone())
+            }
+        }
+        cx.update(gpui_component::init);
+        let renders = Rc::new(Cell::new(0));
+        let (_, view) = cx.add_window_view(|window, cx| Host {
+            panel: cx.new(|cx| Parent {
+                indicator: cx.new(|cx| super::BusyIndicator::new(window, cx)),
+                renders: renders.clone(),
+            }),
+        });
+        view.update(|window, _| window.activate_window());
+        view.run_until_parked();
+        assert!(view.debug_bounds("busy-bars").is_some());
+        // Drain the initial visibility-change and animation notifications.
+        view.update(|window, cx| window.simulate_next_frame(cx));
+        for _ in 0..3 {
+            let initial_renders = renders.get();
+            let frames = view.update(|window, cx| window.simulate_next_frame(cx));
+            assert_eq!(frames, 1, "busy bars must not schedule duplicate frames");
+            assert!(renders.get() <= initial_renders + 1);
+        }
     }
 
     #[gpui::test]
