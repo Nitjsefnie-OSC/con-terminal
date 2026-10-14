@@ -18,6 +18,9 @@ run_case() (
   lipo /usr/bin/true -thin x86_64 -output "$app/Contents/MacOS/con"
   chmod +x "$app/Contents/MacOS/con"
   cp "$app/Contents/MacOS/con" "$app/Contents/MacOS/con-cli"
+  # Exercise the same real-tool check used before the build artifact is uploaded.
+  verify_native_binary_architecture "$app/Contents/MacOS/con" "$CON_ARCH"
+  verify_native_binary_architecture "$app/Contents/MacOS/con-cli" "$CON_ARCH"
   ln -s con-cli "$app/Contents/MacOS/ghostty"
   generate_info_plist "$app/Contents/Info.plist"
   case "$mutation" in
@@ -27,6 +30,8 @@ run_case() (
     missing-cli) rm "$app/Contents/MacOS/con-cli" ;;
     missing-link) rm "$app/Contents/MacOS/ghostty" ;;
     missing-framework) rm -r "$app/Contents/Frameworks/Sparkle.framework" ;;
+    universal-cli) cp /usr/bin/true "$app/Contents/MacOS/con-cli" ;;
+    invalid-binary) printf 'not a Mach-O executable\n' >"$app/Contents/MacOS/con" ;;
   esac
   export CON_PREBUILT_APP_ARCHIVE="$root/$name/native-app.zip"
   ditto -c -k --keepParent "$app" "$CON_PREBUILT_APP_ARCHIVE"
@@ -49,6 +54,6 @@ run_case() (
 )
 
 run_case valid none success
-for mutation in version channel identity architecture missing-cli missing-link missing-framework; do
+for mutation in version channel identity architecture missing-cli missing-link missing-framework universal-cli invalid-binary; do
   run_case "$mutation" "$mutation" failure
 done

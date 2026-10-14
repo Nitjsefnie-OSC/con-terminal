@@ -108,8 +108,10 @@ jobs:
           ./scripts/macos/build-app.sh
           source ./scripts/macos/common.sh
           setup_release_env
+          for binary in con con-cli; do
+            verify_native_binary_architecture "$CON_APP_BUNDLE_PATH/Contents/MacOS/$binary" "$CON_ARCH"
+          done
           "$CON_APP_BUNDLE_PATH/Contents/MacOS/con-cli" --help >/dev/null
-          lipo -verify_arch "$CON_ARCH" "$CON_APP_BUNDLE_PATH/Contents/MacOS/con"
           ditto -c -k --keepParent "$CON_APP_BUNDLE_PATH" "$RUNNER_TEMP/native-app.zip"
 
       - name: Retain native bundle for packaging

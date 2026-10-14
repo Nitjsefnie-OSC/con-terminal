@@ -19,6 +19,14 @@ require_cmd() {
   command -v "$cmd" >/dev/null 2>&1 || fail "missing required command: $cmd"
 }
 
+verify_native_binary_architecture() {
+  local binary="$1" expected="$2" actual
+  [[ -x "$binary" ]] || fail "missing native executable: $binary"
+  actual="$(lipo -archs "$binary")" || fail "cannot read Mach-O architecture: $binary"
+  [[ "$actual" == "$expected" ]] \
+    || fail "native executable architecture mismatch: $binary (expected $expected, got $actual)"
+}
+
 # EX_NOHOST (68) includes transient ticket-service/network responses. Retry
 # only that status; malformed, revoked, and invalid tickets remain fatal.
 run_stapler() {

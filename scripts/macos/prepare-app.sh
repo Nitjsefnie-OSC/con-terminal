@@ -32,9 +32,7 @@ check_plist CFBundleVersion "$CON_BUILD_NUMBER"
 
 for binary in con con-cli; do
   path="$app/Contents/MacOS/$binary"
-  [[ -x "$path" ]] || fail "native bundle is missing executable $binary"
-  [[ "$(lipo -archs "$path")" == "$CON_ARCH" ]] \
-    || fail "native bundle $binary architecture does not match $CON_ARCH"
+  verify_native_binary_architecture "$path" "$CON_ARCH"
 done
 [[ -L "$app/Contents/MacOS/ghostty" && "$(readlink "$app/Contents/MacOS/ghostty")" == "con-cli" ]] \
   || fail "native bundle is missing the Ghostty CLI compatibility link"
