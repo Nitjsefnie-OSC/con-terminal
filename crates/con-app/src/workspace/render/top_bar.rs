@@ -1746,7 +1746,7 @@ impl ConWorkspace {
         let caption_docked = {
             #[cfg(target_os = "macos")]
             {
-                self.caption_dock.current().dock > 0.0
+                self.caption_dock.dock > 0.0
             }
             #[cfg(not(target_os = "macos"))]
             {

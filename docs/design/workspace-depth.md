@@ -3,7 +3,7 @@
 ## Visual hierarchy
 
 On macOS, workspaces with sidebars or multiple tabs use an inset terminal
-canvas. It has 4pt of breathing room and 8pt outer corners. Split panes remain
+canvas. It has 2pt of breathing room and 8pt outer corners. Split panes remain
 part of that one canvas: interior dividers are straight, and no separate cards or
 shadows compete with terminal content.
 
@@ -19,13 +19,19 @@ Light chrome uses a gentle white lift; dark chrome uses a foreground lift.
 Neither needs a shadow or outline. Sidebar boundaries use the canvas gutter,
 not an additional decorative vertical line.
 
+Show/hide reveals the fixed composer through a bottom-anchored clip. The
+composer does not translate vertically. Reserve output rows before revealing
+it, retain that reservation while it is being covered, and release it only
+when fully hidden. Do not resize the terminal for every mask animation frame.
+Popovers use the fixed composer position, not the mask height.
+
 One tab with both sidebars hidden returns to the original clean terminal:
 no canvas inset, no corner mask and no input-island margin. These dimensions
 follow sidebar motion continuously rather than snapping when a boolean changes.
 
-Expanded vertical navigation owns the macOS caption controls. The existing
-toolbar moves into its top row while the global caption row gives its height
-back to terminal content, in one coordinated motion. Its material is supplied
+Expanded vertical navigation owns the macOS caption controls. The toolbar
+occupies its top row while the global caption row gives its height back to
+terminal content. Its material is supplied
 by the sidebar, not by a second translucent header rectangle.
 Compact navigation, hidden navigation, Files/Search and horizontal tabs retain
 the global row. Native traffic lights must never overlap a 44pt rail or a
@@ -34,6 +40,13 @@ The left-sidebar visibility control remains available when docked. The caption
 must fit the traffic lights and all three visibility controls throughout width
 changes. Switching to horizontal tabs restores the global row immediately;
 outgoing docking motion must not briefly expose a terminal behind that row.
+Docking is based on the effective navigation layout and its actual available
+width, not the saved pinned preference. A temporary rail-only override is still
+a rail. Caption progress is derived from the existing sidebar width/visibility
+spring samples, with no independent caption spring. Restore the full caption
+row by the point where the sidebar can no longer contain it; never interpolate the toolbar across native
+terminal content. Compact controls use 24pt targets and a tighter shared gap
+budget, without changing session tile or row hit targets.
 
 ## Ownership and presentation
 
@@ -67,9 +80,10 @@ outgoing docking motion must not briefly expose a terminal behind that row.
 - Existing frame-scoped native presentation synchronization remains in place.
   A shape mask must not introduce an opaque terminal backing, a second glass
   fill or a delayed geometry update.
-- Caption motion has one owner. Reserved global-row height is the complement
-  of docking progress; controls and terminal space move together. Never hold
-  outgoing sidebar width to introduce a second phase. Reduce Motion resolves
+- Caption motion has one owner: the sidebar's existing geometry spring. Reserved global-row height is the complement
+  of docking progress, but docking can start only when the actual sidebar can
+  contain all controls. The toolbar stays inside that sidebar, not somewhere
+  between it and the window edge. Reduce Motion resolves
   directly to a valid endpoint.
   Dragging a pane into a new tab restores the global drop row immediately,
   without making an interaction wait for decorative motion.

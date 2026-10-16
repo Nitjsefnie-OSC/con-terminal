@@ -920,7 +920,7 @@ impl ConWorkspace {
             agent_panel_open,
             agent_panel_motion: SidebarMotion::new(if agent_panel_open { 1.0 } else { 0.0 }),
             #[cfg(target_os = "macos")]
-            caption_dock: frame::CaptionDockMotion::new(false),
+            caption_dock: frame::CaptionLayout::new(0.0),
             #[cfg(target_os = "macos")]
             canvas_depth_progress: 0.0,
             #[cfg(target_os = "macos")]
@@ -1251,7 +1251,7 @@ impl ConWorkspace {
     pub(super) fn current_top_bar_height(&self) -> f32 {
         #[cfg(target_os = "macos")]
         {
-            TOP_BAR_COMPACT_HEIGHT * self.caption_dock.current().header
+            TOP_BAR_COMPACT_HEIGHT * self.caption_dock.header
         }
         #[cfg(not(target_os = "macos"))]
         if self.tab_strip_motion.is_animating() || self.horizontal_tabs_visible() {

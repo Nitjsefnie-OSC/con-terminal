@@ -1,10 +1,8 @@
-use crate::motion::SidebarMotion;
-use gpui::{App, Bounds, Hsla, IntoElement, PathBuilder, Pixels, Styled, Window, point, px};
+use gpui::{Bounds, Hsla, IntoElement, PathBuilder, Pixels, Styled, Window, point, px};
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Instant;
 
-pub(super) const CANVAS_INSET: f32 = 4.0;
+pub(super) const CANVAS_INSET: f32 = 2.0;
 pub(super) const CANVAS_RADIUS: f32 = 8.0;
 pub(super) const INPUT_ISLAND_INSET: f32 = 10.0;
 const INPUT_ISLAND_MAX_WIDTH: f32 = 960.0;
@@ -24,10 +22,25 @@ pub(super) fn input_safe_height(height: f32, progress: f32, depth: f32) -> f32 {
 }
 
 pub(super) fn caption_width(window: f32, sidebar: f32, dock: f32, leading: f32) -> f32 {
-    // Traffic lights and three 22pt controls must fit even while the sidebar
-    // width spring is still catching up with its expanded target.
-    let destination = sidebar.max(leading + 3.0 * 22.0 + 24.0).min(window);
-    window + (destination - window) * dock
+    if dock > 0.0 && sidebar >= caption_minimum_width(leading) {
+        sidebar.min(window)
+    } else {
+        window
+    }
+}
+
+pub(super) fn caption_minimum_width(leading: f32) -> f32 {
+    leading + 3.0 * 22.0 + 24.0
+}
+
+pub(super) fn input_reveal_clip(height: f32, progress: f32, depth: f32) -> gpui::Div {
+    gpui::div()
+        .absolute()
+        .bottom_0()
+        .left_0()
+        .w_full()
+        .h(px(input_safe_height(height, progress, depth)))
+        .overflow_hidden()
 }
 
 #[derive(Default)]
@@ -156,53 +169,15 @@ pub(super) struct CaptionLayout {
     pub header: f32,
 }
 
-/// Caption and terminal space move together, never in successive phases.
-pub(super) struct CaptionDockMotion {
-    dock: SidebarMotion,
-    layout: CaptionLayout,
-}
-
-impl CaptionDockMotion {
-    pub fn new(docked: bool) -> Self {
+impl CaptionLayout {
+    // The sidebar's existing spring owns time. Caption geometry must not
+    // start another spring after that sidebar finally becomes wide enough.
+    pub fn new(dock: f32) -> Self {
+        let dock = dock.clamp(0.0, 1.0);
         Self {
-            dock: SidebarMotion::new(if docked { 1.0 } else { 0.0 }),
-            layout: CaptionLayout {
-                dock: if docked { 1.0 } else { 0.0 },
-                header: if docked { 0.0 } else { 1.0 },
-            },
-        }
-    }
-
-    pub fn current(&self) -> CaptionLayout {
-        self.layout
-    }
-
-    pub fn value(&mut self, wants_dock: bool, window: &mut Window, cx: &App) -> CaptionLayout {
-        let mut request = false;
-        let layout = self.update_at(wants_dock, Instant::now(), cx.reduce_motion(), || {
-            request = true;
-        });
-        if request {
-            window.request_animation_frame();
-        }
-        layout
-    }
-
-    fn update_at(
-        &mut self,
-        wants_dock: bool,
-        now: Instant,
-        reduced: bool,
-        request: impl FnOnce(),
-    ) -> CaptionLayout {
-        self.dock
-            .retarget_at(if wants_dock { 1.0 } else { 0.0 }, now);
-        let dock = self.dock.update_at(now, reduced, request);
-        self.layout = CaptionLayout {
             dock,
             header: 1.0 - dock,
-        };
-        self.layout
+        }
     }
 }
 
@@ -319,7 +294,6 @@ pub(crate) fn header_background(color: Hsla) -> impl IntoElement {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::Duration;
 
     #[test]
     fn floating_input_stays_centered_and_popovers_follow_its_frame() {
@@ -335,7 +309,7 @@ mod tests {
             }
         }
         assert_eq!(input_island_geometry(1600.0, 1.0), (320.0, 960.0));
-        assert_eq!(input_island_geometry(900.0, 1.0), (14.0, 872.0));
+        assert_eq!(input_island_geometry(900.0, 1.0), (12.0, 876.0));
         assert_eq!(input_safe_height(44.0, 1.0, 1.0), 64.0);
         assert_eq!(input_safe_height(44.0, 0.0, 1.0), 0.0);
     }
@@ -347,7 +321,55 @@ mod tests {
                 let width = caption_width(1000.0, sidebar, dock, 78.0);
                 assert!(width >= 168.0);
                 assert!(width <= 1000.0);
+                if dock > 0.0 && sidebar >= caption_minimum_width(78.0) {
+                    assert_eq!(width, sidebar, "toolbar crossed native terminal content");
+                } else {
+                    assert_eq!(width, 1000.0);
+                }
             }
+        }
+    }
+
+    #[gpui::test]
+    fn input_reveal_changes_the_clip_not_the_composer_position(cx: &mut gpui::TestAppContext) {
+        use gpui::{
+            Context, InteractiveElement, IntoElement, ParentElement, Render, Window, div, size,
+        };
+        struct Reveal {
+            progress: f32,
+        }
+        impl Render for Reveal {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div().relative().w_full().h(px(64.0)).child(
+                    input_reveal_clip(44.0, self.progress, 1.0)
+                        .debug_selector(|| "input-reveal-clip".into())
+                        .child(
+                            div()
+                                .absolute()
+                                .bottom(px(10.0))
+                                .left(px(10.0))
+                                .w(px(300.0))
+                                .h(px(44.0))
+                                .debug_selector(|| "fixed-composer".into()),
+                        ),
+                )
+            }
+        }
+        let (view, cx) = cx.add_window_view(|_, _| Reveal { progress: 1.0 });
+        cx.simulate_resize(size(px(500.0), px(300.0)));
+        let fixed = cx.debug_bounds("fixed-composer").unwrap();
+        for progress in [0.25, 0.7, 0.4, 1.0] {
+            view.update(cx, |view, cx| {
+                view.progress = progress;
+                cx.notify();
+            });
+            assert_eq!(cx.debug_bounds("fixed-composer").unwrap(), fixed);
+            let clip = cx.debug_bounds("input-reveal-clip").unwrap();
+            assert_eq!(clip.bottom(), px(64.0));
+            assert!(
+                (clip.size.height.as_f32() - 64.0 * progress).abs() <= 0.5,
+                "clip height must round to the test window's pixel grid"
+            );
         }
     }
 
@@ -441,7 +463,7 @@ mod tests {
             let p = point(px(x), px(y));
             strips.iter().any(|strip| strip.contains(&p))
         };
-        for (x, y) in [(12.0, 220.0), (608.0, 220.0), (310.0, 22.0), (310.0, 418.0)] {
+        for (x, y) in [(11.0, 220.0), (609.0, 220.0), (310.0, 21.0), (310.0, 419.0)] {
             assert!(contains(x, y), "missing chrome at {x},{y}");
         }
         for (x, y) in [(310.0, 220.0), (26.0, 28.0), (310.0, 28.0), (602.0, 220.0)] {
@@ -486,35 +508,6 @@ mod tests {
             assert!(!contains(8.0, 8.0), "corner painted terminal interior");
         }
         assert!(corner_cutouts(bounds, 0.0, 2.0).is_empty());
-    }
-
-    #[test]
-    fn rapid_caption_reversals_keep_space_and_controls_in_one_motion() {
-        let start = Instant::now();
-        let mut motion = CaptionDockMotion::new(true);
-        for tick in 1..400 {
-            let wants = tick % 17 < 8;
-            let layout =
-                motion.update_at(wants, start + Duration::from_millis(tick * 8), false, || {});
-            assert!((layout.header + layout.dock - 1.0).abs() < 0.00001);
-        }
-        for tick in 400..600 {
-            motion.update_at(false, start + Duration::from_millis(tick * 8), false, || {});
-        }
-        assert_eq!(motion.current().header, 1.0);
-        assert_eq!(motion.current().dock, 0.0);
-    }
-
-    #[test]
-    fn reduced_motion_resolves_without_intermediate_layout_or_frames() {
-        let mut motion = CaptionDockMotion::new(false);
-        for wants in [true, false, true] {
-            let layout = motion.update_at(wants, Instant::now(), true, || {
-                panic!("reduced motion scheduled a frame")
-            });
-            assert_eq!(layout.dock, if wants { 1.0 } else { 0.0 });
-            assert_eq!(layout.header, if wants { 0.0 } else { 1.0 });
-        }
     }
 
     #[gpui::test]
@@ -640,40 +633,6 @@ mod tests {
             );
             let _: () = msg_send![host, release];
             let _: () = msg_send![parent, release];
-        }
-    }
-
-    #[test]
-    fn caption_reclaims_height_while_controls_are_still_moving() {
-        let start = Instant::now();
-        let mut motion = CaptionDockMotion::new(false);
-        motion.update_at(true, start, false, || {});
-        let midway = motion.update_at(true, start + Duration::from_millis(80), false, || {});
-        assert!(midway.dock > 0.0 && midway.dock < 1.0);
-        assert!(midway.header > 0.0 && midway.header < 1.0);
-        let mut tick = 0;
-        for _ in 0..8 {
-            for wants in [true, false, true, false] {
-                for _ in 0..100 {
-                    tick += 1;
-                    let now = start + Duration::from_millis(80 + tick * 8);
-                    let layout = motion.update_at(wants, now, false, || {});
-                    assert!((0.0..=1.0).contains(&layout.dock));
-                    assert!((0.0..=1.0).contains(&layout.header));
-                    assert!((layout.header + layout.dock - 1.0).abs() < 0.00001);
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn caption_motion_is_idle_at_both_endpoints() {
-        for docked in [false, true] {
-            let mut motion = CaptionDockMotion::new(docked);
-            let layout = motion.update_at(docked, Instant::now(), false, || {
-                panic!("settled caption requested a frame")
-            });
-            assert_eq!(layout.dock, if docked { 1.0 } else { 0.0 });
         }
     }
 }

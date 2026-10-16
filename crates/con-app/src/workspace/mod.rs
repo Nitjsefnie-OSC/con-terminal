@@ -210,7 +210,7 @@ pub struct ConWorkspace {
     agent_panel_motion: SidebarMotion,
     left_panel_motion: SidebarMotion,
     #[cfg(target_os = "macos")]
-    caption_dock: frame::CaptionDockMotion,
+    caption_dock: frame::CaptionLayout,
     #[cfg(target_os = "macos")]
     canvas_depth_progress: f32,
     #[cfg(target_os = "macos")]

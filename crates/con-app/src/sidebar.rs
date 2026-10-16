@@ -57,9 +57,13 @@ const RAIL_SELECTION_SIZE: f32 = 32.0;
 /// Vertical gap between rail icons. Used to compute the icon's
 /// y-center for hover-card anchoring.
 const RAIL_ICON_GAP: f32 = 2.0;
-const RAIL_BUTTON_SIZE: f32 = 28.0;
-const RAIL_DIVIDER_HEIGHT: f32 = 5.0;
-const RAIL_SESSIONS_GAP: f32 = 12.0;
+const RAIL_BUTTON_SIZE: f32 = if cfg!(target_os = "macos") {
+    24.0
+} else {
+    28.0
+};
+const RAIL_DIVIDER_HEIGHT: f32 = if cfg!(target_os = "macos") { 3.0 } else { 5.0 };
+const RAIL_SESSIONS_GAP: f32 = if cfg!(target_os = "macos") { 8.0 } else { 12.0 };
 const RAIL_TOP_CONTROL_COUNT: f32 = 4.0;
 const RAIL_TOP_DIVIDER_COUNT: f32 = 2.0;
 const RAIL_TOP_GAP_COUNT_BEFORE_SESSIONS: f32 = 7.0;
@@ -95,7 +99,7 @@ impl NavigationLayout {
             (8.0, 0.0),
             (42.0, files_y),
             (76.0, search_y),
-            (panel_width - 36.0, new_y),
+            (panel_width - RAIL_BUTTON_SIZE - 8.0, new_y),
         ]
         .map(|(expanded_x, compact_y)| (mix(8.0, expanded_x), leading + mix(compact_y, 0.0)));
         Self {
@@ -106,7 +110,11 @@ impl NavigationLayout {
             selection_radius: mix(10.0, (row_height - 2.0 * ROW_SELECTION_INSET) * 0.5),
             icon_size: mix(18.0, icon_size),
             icon_center_x: mix(RAIL_ICON_SIZE * 0.5, row_height * 0.5),
-            list_top: leading + mix(RAIL_TOP_CONTROLS_HEIGHT, RAIL_BUTTON_SIZE + 12.0),
+            list_top: leading
+                + mix(
+                    RAIL_TOP_CONTROLS_HEIGHT,
+                    RAIL_BUTTON_SIZE + RAIL_SESSIONS_GAP,
+                ),
             label_opacity: ((t - 0.15) / 0.7).clamp(0.0, 1.0),
             compact: t < 0.5,
             controls,
@@ -478,6 +486,16 @@ impl SessionSidebar {
 
     pub fn is_pinned(&self) -> bool {
         matches!(self.mode, PanelMode::Pinned)
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn caption_dock_progress(&self, visibility: f32, minimum_width: f32) -> f32 {
+        let target_width = self.effective_panel_width();
+        if self.tools_panel_open || self.rail_only_override || target_width <= minimum_width {
+            return 0.0;
+        }
+        ((self.rendered_width() * visibility - minimum_width) / (target_width - minimum_width))
+            .clamp(0.0, 1.0)
     }
 
     pub fn panel_width(&self) -> f32 {
@@ -1000,7 +1018,7 @@ impl SessionSidebar {
                     }
                 }),
             ))
-            .child(div().h(px(1.0)).w(px(20.0)).my(px(2.0)))
+            .child(div().h(px(RAIL_DIVIDER_HEIGHT)).w(px(20.0)))
             .child(rail_icon_button(
                 "tab-sidebar-rail-files",
                 "phosphor/folders.svg",
@@ -1023,7 +1041,7 @@ impl SessionSidebar {
                     })
                 }),
             ))
-            .child(div().h(px(1.0)).w(px(20.0)).my(px(2.0)))
+            .child(div().h(px(RAIL_DIVIDER_HEIGHT)).w(px(20.0)))
             .child(rail_icon_button(
                 "tab-sidebar-rail-new",
                 "phosphor/plus.svg",
@@ -2224,7 +2242,7 @@ where
     div()
         .id(id)
         .debug_selector(move || id.into())
-        .size(px(28.0))
+        .size(px(RAIL_BUTTON_SIZE))
         .flex_shrink_0()
         .flex()
         .items_center()
@@ -2571,6 +2589,66 @@ fn normalize_sidebar_rename_label(value: &str) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn caption_reaches_its_endpoint_with_navigation_and_never_overhangs_a_rail() {
+        let mut sidebar = super::SessionSidebar::default_state();
+        sidebar.mode = super::PanelMode::Pinned;
+        for width in [184.0, 230.0, 320.0] {
+            sidebar.panel_width = width;
+            for progress in [0.0, 0.5, 0.9, 1.0, 0.3, 1.0] {
+                sidebar.width_motion = crate::motion::SidebarMotion::new(progress);
+                for visibility in [0.0, 0.5, 0.9, 1.0] {
+                    let dock = sidebar.caption_dock_progress(visibility, 168.0);
+                    let visible_width = sidebar.rendered_width() * visibility;
+                    assert!((0.0..=1.0).contains(&dock));
+                    if dock > 0.0 {
+                        assert!(visible_width > 168.0);
+                    }
+                    if progress == 1.0 && visibility == 1.0 {
+                        assert_eq!(dock, 1.0, "caption waited for an independent animation");
+                    }
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[gpui::test]
+    fn caption_uses_the_effective_panel_not_the_saved_expanded_preference(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use gpui::AppContext;
+        let sidebar = cx.new(super::SessionSidebar::new);
+        sidebar.update(cx, |sidebar, cx| {
+            sidebar.set_pinned(true, cx);
+            sidebar.width_motion = crate::motion::SidebarMotion::new(1.0);
+            assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 1.0);
+            for visibility in [0.0, 0.5, 0.7] {
+                assert_eq!(sidebar.caption_dock_progress(visibility, 168.0), 0.0);
+            }
+            assert!(sidebar.caption_dock_progress(0.9, 168.0) > 0.0);
+            sidebar.show_rail_only_preserving_pinned(cx);
+            assert!(sidebar.is_pinned());
+            assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 0.0);
+            sidebar.clear_rail_only_override(cx);
+            assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 1.0);
+            sidebar.set_tools_panel_open(true, crate::activity_bar::ActivitySlot::Files);
+            assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 0.0);
+            sidebar.set_tools_panel_open(false, crate::activity_bar::ActivitySlot::Files);
+            sidebar.set_pinned(false, cx);
+            assert!(
+                sidebar.caption_dock_progress(1.0, 168.0) > 0.99,
+                "the outgoing expanded layout still has room for the caption"
+            );
+            sidebar.width_motion = crate::motion::SidebarMotion::new(0.0);
+            assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 0.0);
+            sidebar.set_pinned(true, cx);
+            sidebar.width_motion = crate::motion::SidebarMotion::new(0.0);
+            assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 0.0);
+        });
+    }
+
     #[gpui::test]
     fn collapsing_keeps_outgoing_panel_extent_until_motion_settles(cx: &mut gpui::TestAppContext) {
         use gpui::AppContext;

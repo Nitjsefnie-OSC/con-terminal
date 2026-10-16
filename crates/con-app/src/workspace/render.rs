@@ -330,37 +330,48 @@ impl Render for ConWorkspace {
 
         // Resolve boolean state here so all reveal paths (keyboard, Files,
         // agent requests, restored state) share the same motion contract.
-        #[cfg(target_os = "macos")]
-        let caption = {
-            // Pane promotion needs its global drop target immediately; do not
-            // make a pointer drag wait for decorative caption handoff motion.
-            let pane_promotion = self.pane_title_drag.is_some();
-            if pane_promotion || !self.vertical_tabs_enabled() {
-                self.caption_dock = frame::CaptionDockMotion::new(false);
-            }
-            let wants_dock = self.vertical_tabs_enabled()
-                && self.left_panel_open
-                && !self.sidebar_tools_open
-                && !pane_promotion
-                && self.sidebar.read(cx).is_pinned();
-            self.caption_dock.value(wants_dock, window, cx)
-        };
         self.left_panel_motion
             .set_target(if self.left_panel_open { 1.0 } else { 0.0 });
         self.agent_panel_motion
             .set_target(if self.agent_panel_open { 1.0 } else { 0.0 });
         let left_panel_progress = self.left_panel_motion.value(window, cx);
+        #[cfg(target_os = "macos")]
+        {
+            let tools_open = (self.left_panel_open || left_panel_progress > 0.0)
+                && self.vertical_tabs_enabled()
+                && self.sidebar_tools_open;
+            let slot = self.activity_slot;
+            self.sidebar.update(cx, |sidebar, _| {
+                sidebar.set_tools_panel_open(tools_open, slot)
+            });
+        }
         let rail_transitioning = self
             .sidebar
             .update(cx, |sidebar, cx| sidebar.advance_width_motion(window, cx));
         let left_panel_transitioning = self.left_panel_motion.is_animating() || rail_transitioning;
+        #[cfg(target_os = "macos")]
+        let caption = {
+            let minimum = frame::caption_minimum_width(top_bar::top_bar_leading_pad(window));
+            let sidebar = self.sidebar.read(cx);
+            let eligible = self.vertical_tabs_enabled()
+                && !self.sidebar_tools_open
+                && self.pane_title_drag.is_none();
+            // A rail-only override preserves the expanded preference. It must
+            // not preserve the expanded caption geometry as well.
+            self.caption_dock = frame::CaptionLayout::new(if eligible {
+                sidebar.caption_dock_progress(left_panel_progress, minimum)
+            } else {
+                0.0
+            });
+            self.caption_dock
+        };
         self.input_bar_motion
             .set_target(if self.input_bar_visible { 1.0 } else { 0.0 });
         let agent_panel_progress = self.agent_panel_motion.value(window, cx);
         let input_bar_progress = self.input_bar_motion.value(window, cx);
         #[cfg(target_os = "macos")]
         let canvas_depth = {
-            let depth = if self.tabs.len() > 1 {
+            let depth = if self.horizontal_tabs_visible() {
                 1.0
             } else {
                 left_panel_progress.max(agent_panel_progress)
@@ -437,13 +448,16 @@ impl Render for ConWorkspace {
         let show_vertical_tabs = show_left_panel && vertical_tabs_enabled;
         let show_sidebar_tools =
             show_left_panel && (!vertical_tabs_enabled || self.sidebar_tools_open);
-        let activity_slot = self.activity_slot;
-        self.sidebar.update(cx, |sidebar, _cx| {
-            sidebar.set_tools_panel_open(
-                show_left_panel && vertical_tabs_enabled && show_sidebar_tools,
-                activity_slot,
-            );
-        });
+        #[cfg(not(target_os = "macos"))]
+        {
+            let activity_slot = self.activity_slot;
+            self.sidebar.update(cx, |sidebar, _cx| {
+                sidebar.set_tools_panel_open(
+                    show_left_panel && vertical_tabs_enabled && show_sidebar_tools,
+                    activity_slot,
+                );
+            });
+        }
 
         let theme = cx.theme();
         let ui_surface_opacity = self.ui_surface_opacity();
@@ -803,6 +817,14 @@ impl Render for ConWorkspace {
         }
 
         let input_bar_reserved_for_layout = self.input_bar_visible || input_bar_progress > 0.0;
+        #[cfg(target_os = "macos")]
+        let input_popup_progress = if input_bar_reserved_for_layout {
+            1.0
+        } else {
+            0.0
+        };
+        #[cfg(not(target_os = "macos"))]
+        let input_popup_progress = input_bar_progress;
 
         if input_bar_reserved_for_layout {
             let full_input_bar_height = self.input_bar.read(cx).rendered_height(cx).as_f32();
@@ -846,12 +868,11 @@ impl Render for ConWorkspace {
                 let inset = frame::INPUT_ISLAND_INSET * canvas_depth;
                 let width = (window_width - left_panel_width - agent_panel_outer_width).max(0.0);
                 let (_, island_width) = frame::input_island_geometry(width, canvas_depth);
-                let island = theme
-                    .title_bar
+                let island = terminal_surface_color
                     .blend(if theme.is_dark() {
-                        theme.foreground.opacity(0.065)
+                        theme.foreground.opacity(0.12 * canvas_depth)
                     } else {
-                        gpui::white().opacity(0.45)
+                        gpui::white().opacity(0.16 * canvas_depth)
                     })
                     .opacity(ui_surface_opacity);
                 // Reserve terminal rows, not a second chrome strip. The island
@@ -862,31 +883,38 @@ impl Render for ConWorkspace {
                         .relative()
                         .h(px(frame::input_safe_height(
                             full_input_bar_height,
-                            input_bar_progress,
+                            1.0,
                             canvas_depth,
                         )))
                         .flex_shrink_0()
                         .overflow_hidden()
                         .child(
-                            div()
-                                .absolute()
-                                .top(px(inset))
-                                .left(px(((width
-                                    - 2.0 * frame::CANVAS_INSET * canvas_depth
-                                    - island_width)
-                                    * 0.5)
-                                    .max(0.0)))
-                                .w(px(island_width))
-                                .h(px(full_input_bar_height))
-                                .rounded(px(11.0 * canvas_depth))
-                                .bg(island)
-                                .child(
-                                    self.input_bar.clone().cached(
-                                        StyleRefinement::default()
-                                            .w_full()
-                                            .h(px(full_input_bar_height)),
+                            frame::input_reveal_clip(
+                                full_input_bar_height,
+                                input_bar_progress,
+                                canvas_depth,
+                            )
+                            .child(
+                                div()
+                                    .absolute()
+                                    .bottom(px(inset))
+                                    .left(px(((width
+                                        - 2.0 * frame::CANVAS_INSET * canvas_depth
+                                        - island_width)
+                                        * 0.5)
+                                        .max(0.0)))
+                                    .w(px(island_width))
+                                    .h(px(full_input_bar_height))
+                                    .rounded(px(11.0 * canvas_depth))
+                                    .bg(island)
+                                    .child(
+                                        self.input_bar.clone().cached(
+                                            StyleRefinement::default()
+                                                .w_full()
+                                                .h(px(full_input_bar_height)),
+                                        ),
                                     ),
-                                ),
+                            ),
                         ),
                 );
             }
@@ -906,7 +934,7 @@ impl Render for ConWorkspace {
                 if input_bar_reserved_for_layout {
                     frame::input_safe_height(
                         self.input_bar.read(cx).rendered_height(cx).as_f32(),
-                        input_bar_progress,
+                        1.0,
                         canvas_depth,
                     )
                 } else {
@@ -1708,7 +1736,7 @@ impl Render for ConWorkspace {
         if let Some(picker) = self.render_pane_scope_picker(
             terminal_content_left,
             terminal_content_width,
-            input_bar_progress,
+            input_popup_progress,
             ui_surface_opacity,
             elevated_ui_surface_opacity,
             window,

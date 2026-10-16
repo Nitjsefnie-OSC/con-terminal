@@ -12,7 +12,9 @@ con is still pre-release, so entries may group related beta work while the produ
 
 - The terminal sits in a subtly rounded canvas, with a centered input island
   above its bottom safe area. Expanded vertical tabs bring window controls into
-  the sidebar in one continuous motion, leaving more height for terminal content.
+  the sidebar, leaving more height for terminal content. Compact navigation
+  takes less vertical space, and the input island reveals in place rather than
+  sliding the terminal on every animation frame.
   A single tab without sidebars keeps the clean, edge-to-edge terminal layout.
 
 ## `v0.1.0-beta.138` - 2026-10-16

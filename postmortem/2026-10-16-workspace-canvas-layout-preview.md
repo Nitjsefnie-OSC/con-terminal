@@ -14,6 +14,10 @@ This is an unreleased prototype, not a production incident.
 - The canvas wrapper owned only the pane tree, not the terminal and input region.
 - The old sidebar divider rules remained alongside the new canvas gutters.
 - Caption docking removed the left-sidebar visibility control.
+- Caption docking also used the saved pinned preference while a new-tab reveal
+  temporarily forced a 44pt rail. The toolbar was therefore assigned to a
+  sidebar that could not contain it. Interpolating its width across the terminal
+  did not provide a valid containing rectangle during the transition.
 - Changing to horizontal tabs retained the outgoing caption spring, even though
   horizontal tabs immediately needed the complete global row.
 - A GPUI-colored safe-area extension showed a material step against the native
@@ -29,9 +33,15 @@ geometry. A cached passive native material view supplies only the safe-area
 background; it neither receives input nor covers terminal output. Native
 presentation synchronization also covers changes to this view.
 
-The macOS canvas gutter is 4pt with 8pt corners. Sidebar rules are removed,
+The macOS canvas gutter is 2pt with 8pt corners. Sidebar rules are removed,
 the visibility control remains available, and horizontal mode immediately
 restores the caption row. Windows/Linux retain their previous layout paths.
+Caption eligibility now follows the effective rail/panel state and actual
+available width. An independent caption spring has been removed: caption
+progress is derived from the sidebar's width and visibility, so it cannot
+continue a second animation after navigation has settled. Compact controls share a tighter spacing budget. The composer
+is fixed in place and revealed through a clip; output reservation changes once
+at reveal/fully-covered boundaries instead of resizing the PTY on every frame.
 
 ## Verification and remaining acceptance
 
