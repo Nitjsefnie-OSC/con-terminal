@@ -1145,6 +1145,7 @@ impl PaneTree {
                 close_pane_cb.clone(),
                 toggle_zoom_cb.clone(),
                 rename_editor.clone(),
+                divider_color,
                 has_splits,
                 zoomed_pane_id,
                 session_id,
@@ -1956,6 +1957,7 @@ impl PaneTree {
                 close_pane_cb,
                 toggle_zoom_cb,
                 rename_editor,
+                divider_color,
                 tree_has_splits,
                 zoomed_pane_id,
                 session_id,
@@ -2144,6 +2146,7 @@ impl PaneTree {
         close_pane_cb: PaneCallback,
         toggle_zoom_cb: PaneCallback,
         rename_editor: Option<SurfaceRenameEditor>,
+        surround_color: Hsla,
         tree_has_splits: bool,
         zoomed_pane_id: Option<PaneId>,
         session_id: u64,
@@ -2166,6 +2169,7 @@ impl PaneTree {
                 close_pane_cb,
                 toggle_zoom_cb,
                 rename_editor,
+                surround_color,
                 tree_has_splits,
                 zoomed_pane_id,
                 session_id,
@@ -2186,6 +2190,7 @@ impl PaneTree {
                 close_pane_cb.clone(),
                 toggle_zoom_cb.clone(),
                 rename_editor.clone(),
+                surround_color,
                 tree_has_splits,
                 zoomed_pane_id,
                 session_id,
@@ -2206,6 +2211,7 @@ impl PaneTree {
                     close_pane_cb,
                     toggle_zoom_cb,
                     rename_editor,
+                    surround_color,
                     tree_has_splits,
                     zoomed_pane_id,
                     session_id,
@@ -2227,7 +2233,21 @@ impl PaneTree {
     ) -> Hsla {
         // Keep pane chrome opaque. Text rendered over translucent blurred/native
         // backing picks up rough glyph edges on macOS.
-        theme.title_bar.opacity(1.0)
+        #[cfg(target_os = "macos")]
+        {
+            theme
+                .background
+                .blend(
+                    theme
+                        .foreground
+                        .opacity(if _is_focused { 0.025 } else { 0.012 }),
+                )
+                .opacity(1.0)
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            theme.title_bar.opacity(1.0)
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2774,6 +2794,7 @@ impl PaneTree {
         close_pane_cb: PaneCallback,
         toggle_zoom_cb: PaneCallback,
         rename_editor: Option<SurfaceRenameEditor>,
+        _surround_color: Hsla,
         tree_has_splits: bool,
         zoomed_pane_id: Option<PaneId>,
         session_id: u64,
@@ -3135,7 +3156,7 @@ impl PaneTree {
                 .p(px(if tree_has_splits { 2.0 } else { 0.0 }))
                 .child(pane)
                 .when(tree_has_splits, |container| {
-                    container.child(active.terminal.pane_surround(theme.title_bar.opacity(1.0)))
+                    container.child(active.terminal.pane_surround(_surround_color))
                 })
                 .into_any_element()
         }

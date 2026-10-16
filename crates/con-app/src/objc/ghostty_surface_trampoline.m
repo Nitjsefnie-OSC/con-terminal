@@ -29,6 +29,7 @@ static char kConTerminalCanvasMaskKey;
 @interface ConTerminalCanvasMask : NSObject
 @property(nonatomic, strong) CAShapeLayer *layer;
 @property(nonatomic, strong) CAShapeLayer *paneLayer;
+@property(nonatomic, weak) CALayer *targetLayer;
 @property(nonatomic) NSRect rect;
 @property(nonatomic) NSRect bounds;
 @property(nonatomic) NSRect paneRect;
@@ -134,6 +135,21 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     } else if (NSEqualRects(mask.rect, rect) && NSEqualRects(mask.bounds, host.bounds) &&
                mask.radius == clip.radius && mask.scale == scale &&
                mask.paneRadius == paneRadius && NSEqualRects(mask.paneRect, paneRect)) {
+        BOOL clean = clip.radius <= 0.0 && paneRadius <= 0.0 && NSContainsRect(rect, host.bounds);
+        if (clean ? host.layer.mask != nil : (host.layer.mask != mask.layer ||
+                mask.targetLayer != host.layer || mask.layer.mask != (paneRadius > 0 ? mask.paneLayer : nil))) {
+            // AppKit may replace a backing layer without changing view bounds.
+            // Rebind the cached paths instead of treating geometry as authority.
+            [CATransaction begin];
+            [CATransaction setDisableActions:YES];
+            if (mask.targetLayer != nil && mask.targetLayer != host.layer && mask.targetLayer.mask == mask.layer) {
+                mask.targetLayer.mask = nil;
+            }
+            mask.targetLayer = host.layer;
+            mask.layer.mask = paneRadius > 0 ? mask.paneLayer : nil;
+            host.layer.mask = clean ? nil : mask.layer;
+            [CATransaction commit];
+        }
         return;
     }
     mask.rect = rect;
@@ -153,6 +169,10 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     CGPathRef path = CGPathCreateWithRoundedRect(NSRectToCGRect(rect), clip.radius, clip.radius, NULL);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
+    if (mask.targetLayer != nil && mask.targetLayer != host.layer && mask.targetLayer.mask == mask.layer) {
+        mask.targetLayer.mask = nil;
+    }
+    mask.targetLayer = host.layer;
     mask.layer.frame = host.bounds;
     mask.layer.contentsScale = scale;
     mask.layer.path = path;
@@ -169,6 +189,20 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     host.layer.mask = mask.layer;
     [CATransaction commit];
     CGPathRelease(path);
+}
+
+bool con_terminal_canvas_clip_is_attached(void *host_ptr) {
+    NSView *host = (__bridge NSView *)host_ptr;
+    ConTerminalCanvasClip *clip = objc_getAssociatedObject(host.superview, &kConTerminalCanvasKey);
+    ConTerminalCanvasClip *pane = objc_getAssociatedObject(host, &kConTerminalPaneClipKey);
+    if (clip == nil || host.layer == nil) return false;
+    NSRect rect = [host convertRect:clip.rect fromView:host.superview];
+    if (clip.radius <= 0.0 && pane.radius <= 0.0 && NSContainsRect(rect, host.bounds)) {
+        return host.layer.mask == nil;
+    }
+    ConTerminalCanvasMask *mask = objc_getAssociatedObject(host, &kConTerminalCanvasMaskKey);
+    return mask != nil && mask.targetLayer == host.layer && host.layer.mask == mask.layer &&
+        mask.layer.mask == (pane.radius > 0 ? mask.paneLayer : nil);
 }
 
 bool con_terminal_canvas_set_safe_area(void *gpui_ptr, double height,

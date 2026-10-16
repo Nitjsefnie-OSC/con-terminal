@@ -19,6 +19,9 @@ con is still pre-release, so entries may group related beta work while the produ
 - Split panes and the agent panel share the canvas's quiet, rounded treatment
   on macOS. Surface tabs use clearer labels, and compact-tab details stay in a
   stable, readable hover card.
+- The floating input bar reveals its background and controls together, without
+  first opening a separate empty strip. Pane clipping also recovers when native
+  backing layers change without a layout-size change.
 
 ## `v0.1.0-beta.138` - 2026-10-16
 

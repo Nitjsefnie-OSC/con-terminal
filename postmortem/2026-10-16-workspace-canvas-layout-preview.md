@@ -43,12 +43,31 @@ continue a second animation after navigation has settled. Compact controls share
 is fixed in place and revealed through a clip; output reservation changes once
 at reveal/fully-covered boundaries instead of resizing the PTY on every frame.
 
+That initial reveal contract still prepared an empty native strip before the
+input island appeared. The revised contract reveals the complete island over
+the existing terminal first, then reserves rows at the shown endpoint; hiding
+releases them while the island is covered. The clip excludes empty outer
+padding. Output is briefly behind the overlay during the transition, not at rest.
+A shallow clip starts with the text baseline visible, while one opacity value
+reveals the complete group. The input subtree is uncached only during this
+opacity transition because the pinned view-cache key does not include inherited
+opacity. Its stable endpoint remains cached.
+
 The follow-up visual pass extends this geometry to split panes and the agent
 panel. Each terminal host gets a pane-local rounded mask intersected with the
 workspace mask; the shared window transition underlay is deliberately excluded.
 Unchanged masks retain their paths, and unsplit panes remove the local mask.
 Compact-tab details anchor to measured tiles rather than following the pointer.
 Surface labels use UI typography and no longer sit inside an extra nested track.
+
+Further inspection found two local invalidation gaps: host/surface autoresizing
+was still enabled despite GPUI owning their frames, and the mask cache trusted
+equal bounds without checking its current layer attachment. Disable that second
+geometry owner, verify the actual host frame before skipping sync, and rebind
+cached paths when a layer is replaced. Linked tests exercise real NSScrollView
+frame changes and same-size layer replacement. These establish correctness gaps
+in the prototype; live drag acceptance is still required to establish that the
+reporter's complete gray-region failure is resolved.
 
 ## Verification and remaining acceptance
 
@@ -75,6 +94,19 @@ resize refreshed presentation. Sampling found the main thread in its event
 loop, not blocked in the new clipping calls. The cause is not established and
 this is not a passed visual acceptance. Keep the prototype local until the
 presentation mismatch and light/dark appearance have been confirmed.
+
+The next local build passed 113 focused tests, including actual host-frame
+validation, same-size mask detachment/layer replacement and the single-stage
+input reveal. Strict Clippy and the app/CLI build passed. In a temporary
+three-pane tab, dragging the vertical divider and releasing preserved rounded
+edges without gray residuals. That tab was closed and the original three tabs
+were preserved. A title-drag attempt did not perform a reorder, so it is not
+reported as a passed reorder test. Direct background launch also reproduced a
+separate preview limitation: traces showed no new prepaint/paint after API
+changes until Finder activated the already-running bundle. Distinguish that
+frame-delivery state from a failed GPU submission or the reporter's drag case.
+The final preview is activated, but prolonged dragging, dark-theme desktop
+inspection and the internal-display/battery scenario still need acceptance.
 
 ## Lessons
 

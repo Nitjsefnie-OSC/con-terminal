@@ -127,6 +127,11 @@ If a cached view causes overlap, clipping, or stale layout, the cache boundary i
 - When observing scroll endpoints after layout, request a follow-up frame only
   when visibility changes. An unconditional `on_next_frame` from prepaint creates
   idle frame demand even when no animation is running.
+- Recheck the pinned view-cache key before animating an ancestor's opacity.
+  The current key includes bounds, content mask and text style, but not inherited
+  opacity. Keep such a subtree uncached while its opacity changes, and restore
+  caching at the fully opaque endpoint. A changing clip can invalidate the cache,
+  but rounded pixel bounds are not a reliable opacity invalidation mechanism.
 
 - `.hover(|style| ...)` is a style hook on `Div`; `.on_hover(...)` is an
   enter/exit listener and requires a `Stateful<Div>`.

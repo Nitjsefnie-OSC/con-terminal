@@ -21,6 +21,19 @@ pub(super) fn input_safe_height(height: f32, progress: f32, depth: f32) -> f32 {
     (height + 2.0 * INPUT_ISLAND_INSET * depth) * progress.clamp(0.0, 1.0)
 }
 
+pub(super) fn input_reserved_height(
+    height: f32,
+    visible: bool,
+    animating: bool,
+    depth: f32,
+) -> f32 {
+    if visible && !animating {
+        input_safe_height(height, 1.0, depth)
+    } else {
+        0.0
+    }
+}
+
 pub(super) fn caption_width(window: f32, sidebar: f32, dock: f32, leading: f32) -> f32 {
     if dock > 0.0 && sidebar >= caption_minimum_width(leading) {
         sidebar.min(window)
@@ -34,12 +47,21 @@ pub(super) fn caption_minimum_width(leading: f32) -> f32 {
 }
 
 pub(super) fn input_reveal_clip(height: f32, progress: f32, depth: f32) -> gpui::Div {
+    let progress = progress.clamp(0.0, 1.0);
+    // Start with the text baseline already inside the reveal. A full-height
+    // wipe exposes empty bottom padding before any controls become visible.
+    let reveal = if progress == 0.0 {
+        0.0
+    } else {
+        0.75 + 0.25 * progress
+    };
     gpui::div()
         .absolute()
-        .bottom_0()
+        .bottom(px(INPUT_ISLAND_INSET * depth))
         .left_0()
         .w_full()
-        .h(px(input_safe_height(height, progress, depth)))
+        .h(px(height * reveal))
+        .opacity(progress)
         .overflow_hidden()
 }
 
@@ -120,6 +142,7 @@ impl CanvasSurround {
                 let bounds = crate::terminal_geometry::snap_terminal_bounds(bounds, scale);
                 let inset = canvas_inset(bounds, depth);
                 let inner = bounds.inset(inset);
+                log::trace!(target: "con::canvas", "prepaint bounds={bounds:?} depth={depth} safe_height={safe_height}");
                 prepare_native_canvas(inner, CANVAS_RADIUS * depth, window);
                 prepare_native_safe_area(safe_height, glass, window);
                 let mut cache = cache.borrow_mut();
@@ -138,7 +161,8 @@ impl CanvasSurround {
                     cache.as_ref().unwrap().corners.clone(),
                 )
             },
-            move |_, (strips, corners), window, _| {
+            move |bounds, (strips, corners), window, _| {
+                log::trace!(target: "con::canvas", "paint bounds={bounds:?} depth={depth} safe_height={safe_height}");
                 for strip in strips {
                     if strip.size.width > px(0.0) && strip.size.height > px(0.0) {
                         window.paint_quad(gpui::fill(strip, color));
@@ -412,7 +436,7 @@ mod tests {
                         .child(
                             div()
                                 .absolute()
-                                .bottom(px(10.0))
+                                .bottom_0()
                                 .left(px(10.0))
                                 .w(px(300.0))
                                 .h(px(44.0))
@@ -431,10 +455,88 @@ mod tests {
             });
             assert_eq!(cx.debug_bounds("fixed-composer").unwrap(), fixed);
             let clip = cx.debug_bounds("input-reveal-clip").unwrap();
-            assert_eq!(clip.bottom(), px(64.0));
+            assert_eq!(clip.bottom(), px(54.0));
             assert!(
-                (clip.size.height.as_f32() - 64.0 * progress).abs() <= 0.5,
+                (clip.size.height.as_f32() - 44.0 * (0.75 + 0.25 * progress)).abs() <= 0.5,
                 "clip height must round to the test window's pixel grid"
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn input_reveal_does_not_prepare_an_empty_strip_before_the_island(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use gpui::{
+            Context, InteractiveElement, IntoElement, ParentElement, Render, Window, div, size,
+        };
+        struct Reveal {
+            progress: f32,
+            visible: bool,
+            animating: bool,
+        }
+        impl Render for Reveal {
+            fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+                div()
+                    .relative()
+                    .flex()
+                    .flex_col()
+                    .w_full()
+                    .h(px(300.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_h_0()
+                            .debug_selector(|| "output-viewport".into()),
+                    )
+                    .child(
+                        div()
+                            .h(px(input_reserved_height(
+                                44.0,
+                                self.visible,
+                                self.animating,
+                                1.0,
+                            )))
+                            .flex_shrink_0(),
+                    )
+                    .child(
+                        input_reveal_clip(44.0, self.progress, 1.0).child(
+                            div()
+                                .absolute()
+                                .bottom_0()
+                                .h(px(44.0))
+                                .w_full()
+                                .debug_selector(|| "island-frame".into()),
+                        ),
+                    )
+            }
+        }
+        let (view, cx) = cx.add_window_view(|_, _| Reveal {
+            progress: 0.0,
+            visible: false,
+            animating: false,
+        });
+        cx.simulate_resize(size(px(500.0), px(400.0)));
+        let island = cx.debug_bounds("island-frame").unwrap();
+        for (progress, visible, animating, expected_output) in [
+            (0.1, true, true, 300.0),
+            (0.7, true, true, 300.0),
+            (1.0, true, false, 236.0),
+            (0.6, false, true, 300.0),
+            (0.8, true, true, 300.0),
+            (1.0, true, false, 236.0),
+            (0.0, false, false, 300.0),
+        ] {
+            view.update(cx, |view, cx| {
+                view.progress = progress;
+                view.visible = visible;
+                view.animating = animating;
+                cx.notify();
+            });
+            assert_eq!(cx.debug_bounds("island-frame").unwrap(), island);
+            assert_eq!(
+                cx.debug_bounds("output-viewport").unwrap().size.height,
+                px(expected_output)
             );
         }
     }
@@ -584,6 +686,7 @@ mod tests {
         unsafe extern "C" {
             fn con_terminal_canvas_generation(view: *mut c_void) -> u64;
             fn con_terminal_canvas_apply_clip(view: *mut c_void);
+            fn con_terminal_canvas_clip_is_attached(view: *mut c_void) -> bool;
             fn con_terminal_pane_set_clip(
                 view: *mut c_void,
                 x: f64,
@@ -631,6 +734,23 @@ mod tests {
             con_terminal_canvas_apply_clip(host.cast());
             let same_path: *const c_void = msg_send![mask, path];
             assert_eq!(path, same_path, "idle layout rebuilt the mask");
+            assert!(con_terminal_canvas_clip_is_attached(host.cast()));
+            let _: () = msg_send![layer, setMask: std::ptr::null_mut::<objc::runtime::Object>()];
+            assert!(!con_terminal_canvas_clip_is_attached(host.cast()));
+            con_terminal_canvas_apply_clip(host.cast());
+            assert!(
+                con_terminal_canvas_clip_is_attached(host.cast()),
+                "same-size layout failed to reattach its mask"
+            );
+            let replacement: *mut objc::runtime::Object = msg_send![class!(CALayer), layer];
+            let _: () = msg_send![host, setLayer: replacement];
+            assert!(!con_terminal_canvas_clip_is_attached(host.cast()));
+            con_terminal_canvas_apply_clip(host.cast());
+            assert!(
+                con_terminal_canvas_clip_is_attached(host.cast()),
+                "same-size replacement layer bypassed the mask cache"
+            );
+            let layer = replacement;
             assert_eq!(
                 con_terminal_canvas_header_corners(parent_ptr, 6.0, 6.0, 588.0),
                 3

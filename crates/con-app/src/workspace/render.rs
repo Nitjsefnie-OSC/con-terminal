@@ -869,7 +869,6 @@ impl Render for ConWorkspace {
             }
             #[cfg(target_os = "macos")]
             {
-                let inset = frame::INPUT_ISLAND_INSET * canvas_depth;
                 let width = (window_width - left_panel_width - agent_panel_outer_width).max(0.0);
                 let (_, island_width) = frame::input_island_geometry(width, canvas_depth);
                 let island = terminal_surface_color
@@ -879,48 +878,56 @@ impl Render for ConWorkspace {
                         gpui::white().opacity(0.16 * canvas_depth)
                     })
                     .opacity(ui_surface_opacity);
-                // Reserve terminal rows, not a second chrome strip. The island
-                // is an overlay on a continuous canvas safe area; output and
-                // selections never disappear beneath the composer.
-                terminal_area = terminal_area.child(
-                    div()
-                        .relative()
-                        .h(px(frame::input_safe_height(
-                            full_input_bar_height,
-                            1.0,
-                            canvas_depth,
-                        )))
-                        .flex_shrink_0()
-                        .overflow_hidden()
-                        .child(
-                            frame::input_reveal_clip(
+                // The pinned view-cache key includes clipping but not inherited
+                // opacity. Keep only the settled, fully opaque input cached.
+                let input = if input_bar_transitioning {
+                    self.input_bar.clone().into_any_element()
+                } else {
+                    self.input_bar
+                        .clone()
+                        .cached(
+                            StyleRefinement::default()
+                                .w_full()
+                                .h(px(full_input_bar_height)),
+                        )
+                        .into_any_element()
+                };
+                // Reveal the whole island over the existing terminal, not over
+                // a blank strip prepared by a separate native view. Once shown,
+                // reserve output rows in one synchronized layout update.
+                terminal_area = terminal_area
+                    .child(
+                        div()
+                            .h(px(frame::input_reserved_height(
                                 full_input_bar_height,
-                                input_bar_progress,
+                                self.input_bar_visible,
+                                self.input_bar_motion.is_animating(),
                                 canvas_depth,
-                            )
-                            .child(
-                                div()
-                                    .absolute()
-                                    .bottom(px(inset))
-                                    .left(px(((width
-                                        - 2.0 * frame::CANVAS_INSET * canvas_depth
-                                        - island_width)
-                                        * 0.5)
-                                        .max(0.0)))
-                                    .w(px(island_width))
-                                    .h(px(full_input_bar_height))
-                                    .rounded(px(11.0 * canvas_depth))
-                                    .bg(island)
-                                    .child(
-                                        self.input_bar.clone().cached(
-                                            StyleRefinement::default()
-                                                .w_full()
-                                                .h(px(full_input_bar_height)),
-                                        ),
-                                    ),
-                            ),
+                            )))
+                            .flex_shrink_0(),
+                    )
+                    .child(
+                        frame::input_reveal_clip(
+                            full_input_bar_height,
+                            input_bar_progress,
+                            canvas_depth,
+                        )
+                        .child(
+                            div()
+                                .absolute()
+                                .bottom_0()
+                                .left(px(((width
+                                    - 2.0 * frame::CANVAS_INSET * canvas_depth
+                                    - island_width)
+                                    * 0.5)
+                                    .max(0.0)))
+                                .w(px(island_width))
+                                .h(px(full_input_bar_height))
+                                .rounded(px(11.0 * canvas_depth))
+                                .bg(island)
+                                .child(input),
                         ),
-                );
+                    );
             }
         }
 
@@ -936,9 +943,10 @@ impl Render for ConWorkspace {
                 top_bar_surface_color,
                 canvas_depth,
                 if input_bar_reserved_for_layout {
-                    frame::input_safe_height(
+                    frame::input_reserved_height(
                         self.input_bar.read(cx).rendered_height(cx).as_f32(),
-                        1.0,
+                        self.input_bar_visible,
+                        self.input_bar_motion.is_animating(),
                         canvas_depth,
                     )
                 } else {

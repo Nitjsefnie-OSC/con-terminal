@@ -19,9 +19,9 @@ single-pane footer when there is no other status to convey.
 The input bar floats on the continuous terminal canvas, rather than sitting in
 a separate chrome strip. A 10pt safe-area inset and 11pt corner radius distinguish
 the composer; its width stops at 960pt and remains centered on wider canvases.
-Its popovers use the same horizontal geometry. The terminal viewport reserves
-the composer's height and safe area so the final row and selections never hide
-behind the island. Only this reserved area receives a terminal-colored native
+Its popovers use the same horizontal geometry. Once revealed, the terminal
+viewport reserves the composer's height and safe area so the final row and
+selections remain visible. Only this reserved area receives a terminal-colored native
 material; never paint a second fill over native terminal content. The composer uses
 Window Chrome, while the surrounding safe area uses Terminal Glass opacity.
 Light chrome uses a gentle white lift; dark chrome uses a foreground lift.
@@ -29,9 +29,17 @@ Neither needs a shadow or outline. Sidebar boundaries use the canvas gutter,
 not an additional decorative vertical line.
 
 Show/hide reveals the fixed composer through a bottom-anchored clip. The
-composer does not translate vertically. Reserve output rows before revealing
-it, retain that reservation while it is being covered, and release it only
-when fully hidden. Do not resize the terminal for every mask animation frame.
+composer does not translate vertically. The clip covers only the island, not
+its empty surrounding inset. A shallow reveal starts with the text baseline
+visible and fades the complete island together; do not wipe through blank
+bottom padding before showing its controls. The pinned GPUI view-cache key does
+not include inherited opacity, so input caching is used only at the settled,
+fully opaque endpoint. Reveal background and controls as one overlay
+over the current terminal, then reserve output rows once the reveal completes.
+On hide, release those rows while the island is being covered. During that
+short transition the island overlays output; at rest it must not conceal the
+prompt. Never prepare a blank strip before the composer or resize the terminal
+for every mask animation frame.
 Popovers use the fixed composer position, not the mask height.
 
 One tab with both sidebars hidden returns to the original clean terminal:
@@ -94,6 +102,13 @@ budget, without changing session tile or row hit targets.
   returns to an unsplit layout. Never attach pane-local clipping to the shared
   window transition underlay. Keep this path macOS-only until other backends
   have equivalent native acceptance; GPUI rounding alone does not clip AppKit.
+- GPUI owns host and surface view frames; disable their AppKit autoresizing
+  masks. A cached layout is not authority for the actual native frame or the
+  current backing layer's mask attachment. Check those before skipping sync,
+  and reattach cached paths if AppKit replaces a backing layer at equal bounds.
+  `RUST_LOG=con::canvas=trace` records prepaint/paint bounds and native host,
+  clip-view and surface-layer geometry for diagnosis; it does not log terminal
+  text. Keep this opt-in trace off during normal performance measurements.
 - Caption motion has one owner: the sidebar's existing geometry spring. Reserved global-row height is the complement
   of docking progress, but docking can start only when the actual sidebar can
   contain all controls. The toolbar stays inside that sidebar, not somewhere
