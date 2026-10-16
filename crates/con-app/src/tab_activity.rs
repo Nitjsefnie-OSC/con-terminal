@@ -124,8 +124,8 @@ impl TabActivity {
         self.markers.borrow_mut().used = 0;
     }
 
-    /// Keeps the caller's original icon slot. Compact rail slots retain the
-    /// brand below a progress ring; stationary states use one centered glyph.
+    /// Keeps the caller's original icon slot. Compact working states retain the
+    /// brand inside a ring; expanded busy states use the shared three-bar loader.
     pub(crate) fn icon(
         &self,
         icon: &'static str,
@@ -154,7 +154,9 @@ impl TabActivity {
             .justify_center()
             .flex_shrink_0()
             .size(slot_size);
-        if !active || (compact && visual.glyph().is_none()) {
+        if !active
+            || (compact && matches!(visual, ActivityVisual::Busy | ActivityVisual::Progress(_)))
+        {
             slot = slot.child(
                 div()
                     .debug_selector(|| "tab-status-brand".into())
@@ -737,7 +739,7 @@ mod tests {
                 assert_eq!(layer.markers.borrow().used, 1);
                 assert_eq!(
                     layer.markers.borrow().rows[0].visual,
-                    if !compact && visual == ActivityVisual::Busy {
+                    if visual == ActivityVisual::Busy && !compact {
                         ActivityVisual::BusyBars
                     } else {
                         visual

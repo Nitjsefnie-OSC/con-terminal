@@ -8,7 +8,7 @@
 //! - Active row: low-opacity selection fill + foreground text. **No accent
 //!   bar.** A single, unambiguous selection cue is enough; tab accent
 //!   colors render as the row surface itself at active/inactive alpha.
-//! - Action affordances (rename pencil, close X) are hover-only on
+//! - The close affordance is hover-only on
 //!   every row, including the active one. Quiet by default; reveal
 //!   on intent.
 //! - Surface separation comes from `surface_tone()` (foreground
@@ -26,6 +26,7 @@ use gpui::{
 };
 use gpui_component::{
     ActiveTheme, ElementExt, InteractiveElementExt, Sizable,
+    button::{Button, ButtonCustomVariant, ButtonVariants},
     input::{Escape as InputEscape, Input, InputEvent, InputState},
     menu::{ContextMenuExt, PopupMenu},
     tooltip::Tooltip,
@@ -44,8 +45,11 @@ pub const PANEL_MAX_WIDTH: f32 = 360.0;
 /// comfortable at this magnification.
 #[allow(dead_code)]
 const HOVER_CARD_WIDTH: f32 = 240.0;
-/// Per-row height in pinned mode (two-line layout — name + subtitle).
-const ROW_HEIGHT: f32 = 40.0;
+/// Single-line tabs keep the expanded navigator as light as the compact rail.
+const ROW_HEIGHT: f32 = 32.0;
+const ROW_SELECTION_INSET: f32 = 3.0;
+const CLOSE_TARGET_SIZE: f32 = 20.0;
+const CLOSE_CIRCLE_SIZE: f32 = 14.0;
 /// Square session tile size, leaving 2px on each side of the rail.
 const RAIL_ICON_SIZE: f32 = RAIL_WIDTH - 4.0;
 /// Selection is inset from the hit target; dragging still uses the full tile.
@@ -63,6 +67,52 @@ const RAIL_TOP_CONTROLS_HEIGHT: f32 = RAIL_BUTTON_SIZE * RAIL_TOP_CONTROL_COUNT
     + RAIL_DIVIDER_HEIGHT * RAIL_TOP_DIVIDER_COUNT
     + RAIL_ICON_GAP * RAIL_TOP_GAP_COUNT_BEFORE_SESSIONS
     + RAIL_SESSIONS_GAP;
+
+/// One spring sample owns both the reserved width and the moving chrome.
+#[derive(Clone, Copy)]
+struct NavigationLayout {
+    width: f32,
+    row_height: f32,
+    row_inset: f32,
+    selection_inset: f32,
+    selection_radius: f32,
+    icon_size: f32,
+    icon_center_x: f32,
+    list_top: f32,
+    label_opacity: f32,
+    compact: bool,
+    controls: [(f32, f32); 4],
+}
+
+impl NavigationLayout {
+    fn new(panel_width: f32, leading: f32, row_height: f32, icon_size: f32, progress: f32) -> Self {
+        let t = progress.clamp(0.0, 1.0);
+        let mix = |from: f32, to: f32| from + (to - from) * t;
+        let files_y = RAIL_BUTTON_SIZE + RAIL_DIVIDER_HEIGHT + 2.0 * RAIL_ICON_GAP;
+        let search_y = files_y + RAIL_BUTTON_SIZE + RAIL_ICON_GAP;
+        let new_y = search_y + RAIL_BUTTON_SIZE + RAIL_DIVIDER_HEIGHT + 2.0 * RAIL_ICON_GAP;
+        let controls = [
+            (8.0, 0.0),
+            (42.0, files_y),
+            (76.0, search_y),
+            (panel_width - 36.0, new_y),
+        ]
+        .map(|(expanded_x, compact_y)| (mix(8.0, expanded_x), leading + mix(compact_y, 0.0)));
+        Self {
+            width: mix(RAIL_WIDTH, panel_width),
+            row_height: mix(RAIL_ICON_SIZE, row_height),
+            row_inset: mix(2.0, 8.0),
+            selection_inset: mix(4.0, ROW_SELECTION_INSET),
+            selection_radius: mix(10.0, (row_height - 2.0 * ROW_SELECTION_INSET) * 0.5),
+            icon_size: mix(18.0, icon_size),
+            icon_center_x: mix(RAIL_ICON_SIZE * 0.5, row_height * 0.5),
+            list_top: leading + mix(RAIL_TOP_CONTROLS_HEIGHT, RAIL_BUTTON_SIZE + 12.0),
+            label_opacity: ((t - 0.15) / 0.7).clamp(0.0, 1.0),
+            compact: t < 0.5,
+            controls,
+        }
+    }
+}
 
 /// One row in the tab sidebar panel.
 pub struct SessionEntry {
@@ -582,7 +632,7 @@ impl SessionSidebar {
                 .w(preview_size.width)
                 .h(preview_size.height)
                 .px(px(10.0))
-                .rounded(px(4.0))
+                .rounded(px(preview_size.height.as_f32() * 0.5))
                 .flex()
                 .items_center()
                 .gap(px(6.0))
@@ -591,13 +641,11 @@ impl SessionSidebar {
                 .font_family(theme.font_family.clone())
                 .text_size(px(12.0))
                 .text_color(theme.foreground)
-                .child(
-                    svg()
-                        .path(preview.icon)
-                        .size(ui_icon_px(theme, 12.0))
-                        .flex_shrink_0()
-                        .text_color(theme.foreground),
-                )
+                .child(crate::assets::tab_identity_icon(
+                    sidebar_tab_icon(preview.icon),
+                    ui_icon_px(theme, 18.0),
+                    theme.foreground,
+                ))
                 .child(div().flex_1().min_w_0().truncate().child(preview.label))
                 .into_any_element(),
         )
@@ -1070,7 +1118,7 @@ impl SessionSidebar {
                         .debug_selector(|| "sidebar-session-selection".into())
                         .absolute()
                         .size(px(RAIL_SELECTION_SIZE))
-                        .rounded(px(7.0))
+                        .rounded(px(10.0))
                         .bg(pill_bg)
                         .group_hover(
                             SharedString::from(format!("rail-tab-group-{i}")),
@@ -1089,7 +1137,10 @@ impl SessionSidebar {
                 )
                 .on_mouse_down(
                     MouseButton::Middle,
-                    cx.listener(move |_this, _, _, cx| cx.emit(SidebarCloseTab { session_id })),
+                    cx.listener(move |_this, _, _, cx| {
+                        cx.stop_propagation();
+                        cx.emit(SidebarCloseTab { session_id });
+                    }),
                 )
                 .on_double_click(cx.listener(move |this, _, window, cx| {
                     this.start_rename_by_id(session_id, window, cx);
@@ -1336,40 +1387,68 @@ impl SessionSidebar {
 
     fn render_panel_body(
         &mut self,
-        _is_overlay: bool,
+        layout: NavigationLayout,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
-        let header_color;
-        let header_font;
-        {
-            let theme = cx.theme();
-            header_color = theme.muted_foreground;
-            header_font = theme.font_family.clone();
-        }
-
-        let header_top = self.leading_top_pad.max(0.0);
+        let mode_label = format!(
+            "{} tabs ({})",
+            if self.is_pinned() {
+                "Compact"
+            } else {
+                "Expand"
+            },
+            self.sessions.len()
+        );
         let header = div()
-            .flex()
-            .flex_col()
-            .h(px(header_top + 42.0))
-            .pt(px(header_top))
-            .child(
-                div()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .h(px(34.0))
-                    .px(px(16.0))
-                    .child(
-                        div()
-                            .text_size(crate::ui_scale::ui_px(cx.theme(), 10.5))
-                            .font_weight(FontWeight::SEMIBOLD)
-                            .text_color(header_color)
-                            .font_family(header_font)
-                            .child(format!("{} TABS", self.sessions.len())),
-                    ),
-            );
+            .relative()
+            .w_full()
+            .h(px(layout.list_top))
+            .flex_shrink_0()
+            .child(navigation_button(
+                "tab-sidebar-rail-expand",
+                if self.is_pinned() {
+                    "phosphor/caret-line-left.svg"
+                } else {
+                    "phosphor/caret-line-right.svg"
+                },
+                mode_label.into(),
+                layout.controls[0],
+                cx,
+                cx.listener(|this, _, _, cx| this.toggle_pinned(cx)),
+            ))
+            .child(navigation_button(
+                "tab-sidebar-rail-files",
+                "phosphor/folders.svg",
+                "Files".into(),
+                layout.controls[1],
+                cx,
+                cx.listener(|_, _, _, cx| {
+                    cx.emit(SidebarOpenToolSlot {
+                        slot: ActivitySlot::Files,
+                    })
+                }),
+            ))
+            .child(navigation_button(
+                "tab-sidebar-rail-search",
+                "phosphor/magnifying-glass.svg",
+                "Search across files".into(),
+                layout.controls[2],
+                cx,
+                cx.listener(|_, _, _, cx| {
+                    cx.emit(SidebarOpenToolSlot {
+                        slot: ActivitySlot::Search,
+                    })
+                }),
+            ))
+            .child(navigation_button(
+                "tab-sidebar-rail-new",
+                "phosphor/plus.svg",
+                "New tab".into(),
+                layout.controls[3],
+                cx,
+                cx.listener(|_, _, _, cx| cx.emit(NewSession)),
+            ));
 
         let total = self.sessions.len();
         self.tab_bounds.borrow_mut().clear();
@@ -1389,9 +1468,9 @@ impl SessionSidebar {
             .flex_col()
             .flex_1()
             .min_h_0()
-            .px(px(8.0))
-            .pt(px(2.0))
-            .gap(px(4.0))
+            .px(px(layout.row_inset))
+            .gap(px(2.0))
+            .overflow_y_scroll()
             // Body-level drag_move ONLY runs the "below last row"
             // detection — the per-row handlers handle every cursor
             // position that's actually over a row. We fire the
@@ -1446,10 +1525,10 @@ impl SessionSidebar {
                         return;
                     }
                     // Sidebar drag: "below last row" fallback.
-                    let approx_row_h = ROW_HEIGHT;
-                    let last_row_bottom_estimate =
-                        f32::from(event.bounds.origin.y) + (total as f32) * (approx_row_h + 2.0);
-                    if f32::from(event.event.position.y) >= last_row_bottom_estimate {
+                    if bounds
+                        .last()
+                        .is_some_and(|last| event.event.position.y >= last.bottom())
+                    {
                         let preview_missing = this.drag_preview.borrow().is_none();
                         let preview_size = tab_drag_preview_size(this.is_pinned());
                         this.ensure_drag_preview(
@@ -1537,6 +1616,7 @@ impl SessionSidebar {
                 drag_in_sidebar,
                 window,
                 cx,
+                layout,
             );
             list = list.child(row);
         }
@@ -1563,6 +1643,7 @@ impl SessionSidebar {
         drag_in_sidebar: bool,
         _window: &mut Window,
         cx: &mut Context<Self>,
+        layout: NavigationLayout,
     ) -> AnyElement {
         let theme_clone = cx.theme().clone();
         let theme = &theme_clone;
@@ -1576,7 +1657,7 @@ impl SessionSidebar {
         let drop_above = drop_slot == Some(i) && drag_in_sidebar;
         let drop_below = i + 1 == total && drop_slot == Some(total) && drag_in_sidebar;
 
-        let row_h = ui_px(theme, ROW_HEIGHT).max(px(40.0)).as_f32();
+        let row_h = layout.row_height;
 
         let label_block: AnyElement = if is_renaming {
             if let Some(input) = rename_input {
@@ -1593,66 +1674,45 @@ impl SessionSidebar {
             }
         } else {
             let name = session.name.clone();
-            let subtitle = session.subtitle.as_deref().map(sidebar_directory_name);
-            let mono = theme.mono_font_family.clone();
             let sys = theme.font_family.clone();
             let fg = theme.foreground;
-            let sub_fg = theme.muted_foreground;
-            let mut block = div()
+            div()
                 .flex()
-                .flex_col()
+                .items_center()
                 .flex_1()
                 .min_w_0()
-                .gap(px(1.0))
                 .child(
                     div()
+                        .w_full()
                         .overflow_hidden()
                         .truncate()
                         .debug_selector(|| "sidebar-session-name".into())
                         .text_size(ui_px(theme, 12.5))
-                        .line_height(ui_px(theme, 16.0))
+                        .line_height(ui_px(theme, 18.0))
                         .font_family(sys)
                         .text_color(fg)
-                        .when(is_active, |s| s.font_weight(FontWeight::MEDIUM))
+                        .font_weight(if is_active {
+                            FontWeight::MEDIUM
+                        } else {
+                            FontWeight::NORMAL
+                        })
                         .child(name),
-                );
-            if let Some(sub) = subtitle {
-                block = block.child(
-                    div()
-                        .overflow_hidden()
-                        .truncate()
-                        .debug_selector(|| "sidebar-session-directory".into())
-                        .text_size(ui_px(theme, 10.5))
-                        .line_height(ui_px(theme, 14.0))
-                        .font_family(mono)
-                        .text_color(sub_fg)
-                        .child(sub.to_owned()),
-                );
-            }
-            block.into_any_element()
+                )
+                .into_any_element()
         };
 
         let row_group = SharedString::from(format!("panel-tab-row-{i}"));
         let session_id = session.id;
 
-        // Both action buttons hover-only on every row, including
-        // active. Apple-quiet: visible on intent, hidden by default.
-        let rename_btn = panel_icon_button_small(
-            SharedString::from(format!("panel-tab-rename-{i}")),
-            "phosphor/pencil-simple.svg",
-            theme,
-            cx.listener(move |this, _, window, cx| this.begin_rename(i, window, cx)),
-        )
-        .invisible()
-        .group_hover(row_group.clone(), |s| s.visible());
-        let close_btn = panel_icon_button_small(
-            SharedString::from(format!("panel-tab-close-{i}")),
-            "phosphor/x.svg",
-            theme,
-            cx.listener(move |_this, _, _, cx| cx.emit(SidebarCloseTab { session_id })),
-        )
-        .invisible()
-        .group_hover(row_group.clone(), |s| s.visible());
+        // Reserve one stable trailing slot. Rename stays on double-click and
+        // in the context menu instead of stealing title width on every row.
+        let close_btn =
+            sidebar_close_button(SharedString::from(format!("panel-tab-close-{i}")), cx)
+                .on_click(
+                    cx.listener(move |_this, _, _, cx| cx.emit(SidebarCloseTab { session_id })),
+                )
+                .invisible()
+                .group_hover(row_group.clone(), |s| s.visible());
 
         let drop_line_above = div()
             .absolute()
@@ -1722,9 +1782,16 @@ impl SessionSidebar {
         };
         let tab_bounds = self.tab_bounds.clone();
 
-        let icon_size = ui_icon_px(theme, 16.0);
-        let mut icon_stack = div().relative().flex_shrink_0().child(
-            self.activity_layer.as_ref().unwrap().read(cx).icon(
+        let icon_size = px(layout.icon_size);
+        let mut icon_stack = div()
+            .absolute()
+            .left(px(layout.icon_center_x - 16.0))
+            .top(px((row_h - 32.0) * 0.5))
+            .size(px(32.0))
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(self.activity_layer.as_ref().unwrap().read(cx).icon(
                 sidebar_tab_icon(session.icon),
                 icon_size,
                 if is_active {
@@ -1734,9 +1801,8 @@ impl SessionSidebar {
                 },
                 session.status,
                 theme,
-                false,
-            ),
-        );
+                layout.compact,
+            ));
         if session.needs_attention
             && !is_active
             && !session.status.is_some_and(|status| {
@@ -1752,8 +1818,8 @@ impl SessionSidebar {
             icon_stack = icon_stack.child(
                 div()
                     .absolute()
-                    .top(px(-2.0))
-                    .right(px(-2.0))
+                    .top(px((32.0 - layout.icon_size) * 0.5 - 2.0))
+                    .right(px((32.0 - layout.icon_size) * 0.5 - 2.0))
                     .size(px(6.0))
                     .rounded_full()
                     .bg(theme.primary),
@@ -1767,27 +1833,39 @@ impl SessionSidebar {
             .relative()
             .flex()
             .items_center()
-            .gap(px(8.0))
-            .pl(px(10.0))
-            .pr(px(8.0))
             .h(px(row_h))
-            .rounded(px(6.0))
+            .flex_shrink_0()
+            .rounded(px(row_h * 0.5))
             .cursor_pointer()
-            .bg(row_bg)
+            .child(
+                div()
+                    .debug_selector(|| "sidebar-session-surface".into())
+                    .absolute()
+                    .inset(px(layout.selection_inset))
+                    .rounded(px(layout.selection_radius))
+                    .bg(row_bg)
+                    .group_hover(row_group.clone(), move |s| {
+                        if is_active {
+                            s
+                        } else {
+                            s.bg(inactive_hover_bg)
+                        }
+                    }),
+            )
             .text_color(if is_active {
                 theme.foreground
             } else {
                 theme.muted_foreground
             })
-            .hover(move |s| {
-                if is_active {
-                    s
-                } else {
-                    s.bg(inactive_hover_bg)
+            .tooltip({
+                let detail = sidebar_row_detail(session);
+                move |window, cx| {
+                    Tooltip::new(detail.clone())
+                        .font_family(cx.theme().font_family.clone())
+                        .text_size(ui_px(cx.theme(), 12.0))
+                        .max_w(px(360.0))
+                        .build(window, cx)
                 }
-            })
-            .when_some(session.status_detail.clone(), |row, detail| {
-                row.tooltip(move |window, cx| Tooltip::new(detail.clone()).build(window, cx))
             })
             .on_mouse_down(
                 MouseButton::Left,
@@ -1884,16 +1962,34 @@ impl SessionSidebar {
             .child(drop_line_above)
             .child(drop_line_below)
             .child(icon_stack)
-            .child(label_block)
             .child(
                 div()
+                    .absolute()
+                    .top_0()
+                    .h_full()
                     .flex()
                     .items_center()
-                    .gap(px(2.0))
-                    .flex_shrink_0()
-                    .child(rename_btn)
-                    .child(close_btn),
-            );
+                    .left(px(layout.icon_center_x + layout.icon_size * 0.5 + 8.0))
+                    .w(px((layout.width
+                        - 2.0 * layout.row_inset
+                        - (layout.icon_center_x + layout.icon_size * 0.5 + 8.0)
+                        - (row_h - CLOSE_TARGET_SIZE) * 0.5
+                        - CLOSE_TARGET_SIZE
+                        - 8.0)
+                        .max(0.0)))
+                    .overflow_hidden()
+                    .opacity(layout.label_opacity)
+                    .child(label_block),
+            )
+            .when(layout.label_opacity >= 0.99, |row| {
+                row.child(
+                    div()
+                        .absolute()
+                        .right(px((row_h - CLOSE_TARGET_SIZE) * 0.5))
+                        .top(px((row_h - CLOSE_TARGET_SIZE) * 0.5))
+                        .child(close_btn),
+                )
+            });
         row.into_any_element()
     }
 }
@@ -1926,7 +2022,7 @@ impl Render for SessionSidebar {
         }
         // The workspace samples this too, so terminal reservation follows
         // the same animated compact/expanded extent.
-        let _progress = self.width_motion.value(window, cx);
+        let progress = self.width_motion.value(window, cx);
 
         if self.tools_panel_open || self.rail_only_override {
             return div()
@@ -1940,53 +2036,28 @@ impl Render for SessionSidebar {
                 .into_any_element();
         }
 
-        match self.mode {
-            PanelMode::Collapsed if self.width_motion.current() > 0.0 => {
-                let visible_w = self.rendered_width();
-                div()
-                    .font_family(ui_font)
-                    .relative()
-                    .flex()
-                    .h_full()
-                    .w(px(visible_w))
-                    .flex_shrink_0()
-                    .overflow_hidden()
-                    .child(self.render_rail(window, cx))
-                    .child(
-                        div()
-                            .w(px(self.effective_panel_width() - RAIL_WIDTH))
-                            .h_full()
-                            .flex_shrink_0()
-                            .child(self.render_panel_body(false, window, cx)),
-                    )
-                    .child(activity_layer)
-                    .into_any_element()
-            }
-            PanelMode::Pinned => {
-                let t = self.width_motion.current().clamp(0.0, 1.0);
-                let visible_w = RAIL_WIDTH + (self.effective_panel_width() - RAIL_WIDTH) * t;
-                let panel = self.render_panel_body(false, window, cx);
-                div()
-                    .font_family(ui_font.clone())
-                    .relative()
-                    .flex()
-                    .h_full()
-                    .w(px(visible_w))
-                    .flex_shrink_0()
-                    .overflow_hidden()
-                    .child(self.render_rail(window, cx))
-                    .child(
-                        div()
-                            .h_full()
-                            .w(px(self.effective_panel_width() - RAIL_WIDTH))
-                            .flex_shrink_0()
-                            .overflow_hidden()
-                            .child(panel),
-                    )
-                    .child(activity_layer)
-                    .into_any_element()
-            }
-            PanelMode::Collapsed => div()
+        if self.is_pinned() || progress > 0.0 {
+            let theme = cx.theme();
+            let layout = NavigationLayout::new(
+                self.effective_panel_width(),
+                self.leading_top_pad.max(0.0),
+                ui_px(theme, ROW_HEIGHT).max(px(ROW_HEIGHT)).as_f32(),
+                ui_icon_px(theme, 16.0).as_f32(),
+                progress,
+            );
+            let panel = self.render_panel_body(layout, window, cx);
+            div()
+                .font_family(ui_font)
+                .relative()
+                .h_full()
+                .w(px(layout.width))
+                .flex_shrink_0()
+                .overflow_hidden()
+                .child(panel)
+                .child(activity_layer)
+                .into_any_element()
+        } else {
+            div()
                 .font_family(ui_font)
                 .relative()
                 .h_full()
@@ -1994,7 +2065,7 @@ impl Render for SessionSidebar {
                 .flex_shrink_0()
                 .child(self.render_rail(window, cx))
                 .child(activity_layer)
-                .into_any_element(),
+                .into_any_element()
         }
     }
 }
@@ -2018,14 +2089,20 @@ fn elevated_surface(theme: &gpui_component::Theme, opacity: f32) -> Hsla {
 fn sidebar_selection_fill(theme: &gpui_component::Theme) -> Hsla {
     theme
         .foreground
-        .opacity(if theme.is_dark() { 0.10 } else { 0.07 })
+        .opacity(if theme.is_dark() { 0.12 } else { 0.065 })
 }
 
 fn sidebar_tab_icon(icon: &'static str) -> &'static str {
-    match icon {
-        "phosphor/terminal.svg" => "phosphor/terminal-window.svg",
-        _ => icon,
-    }
+    crate::assets::tab_identity_asset(icon)
+}
+
+fn sidebar_row_detail(session: &SessionEntry) -> String {
+    std::iter::once(session.name.as_str())
+        .chain(session.subtitle.as_deref())
+        .chain(session.status_detail.as_deref())
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn sanitize_tab_accent_alpha(alpha: f32) -> f32 {
@@ -2060,21 +2137,6 @@ fn point_in_bounds(p: &gpui::Point<gpui::Pixels>, b: &gpui::Bounds<gpui::Pixels>
         && p.x < b.origin.x + b.size.width
         && p.y >= b.origin.y
         && p.y < b.origin.y + b.size.height
-}
-
-fn sidebar_directory_name(path: &str) -> &str {
-    let windows_path = path.as_bytes().get(1) == Some(&b':') || path.starts_with("\\\\");
-    let is_separator = |c| c == '/' || (windows_path && c == '\\');
-    let trimmed = path.trim_end_matches(is_separator);
-    if trimmed.is_empty() {
-        return path;
-    }
-    let name = trimmed.rsplit(is_separator).next().unwrap_or(path);
-    if windows_path && name == trimmed && trimmed.ends_with(':') {
-        path
-    } else {
-        name
-    }
 }
 
 /// Map the cursor's y-position during a rail drag to a drop slot
@@ -2291,34 +2353,89 @@ fn build_row_context_menu(
     )
 }
 
-fn panel_icon_button_small<F>(
-    id: SharedString,
+fn navigation_button<F>(
+    id: &'static str,
     icon: &'static str,
-    theme: &gpui_component::Theme,
+    label: SharedString,
+    origin: (f32, f32),
+    cx: &App,
     handler: F,
-) -> Stateful<Div>
+) -> Button
 where
-    F: Fn(&MouseDownEvent, &mut Window, &mut App) + 'static,
+    F: Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
 {
-    let hover_bg = surface_tone(theme, 0.08);
-    div()
-        .id(id)
-        .size(px(20.0))
-        .flex_shrink_0()
-        .flex()
-        .items_center()
-        .justify_center()
-        .rounded(px(5.0))
-        .cursor_pointer()
-        .hover(move |s| s.bg(hover_bg))
+    Button::new(id)
+        .debug_selector(move || id.into())
+        .ghost()
+        .small()
+        .absolute()
+        .left(px(origin.0))
+        .top(px(origin.1))
+        .size(px(RAIL_BUTTON_SIZE))
+        .w(px(RAIL_BUTTON_SIZE))
+        .h(px(RAIL_BUTTON_SIZE))
+        .p_0()
+        .rounded(px(7.0))
+        .tab_stop(false)
+        .accessibility_label(label.clone())
+        .tooltip(label)
         .child(
             svg()
                 .path(icon)
-                .size(ui_icon_px(theme, 11.0))
-                .flex_shrink_0()
-                .text_color(theme.muted_foreground),
+                .size(ui_icon_px(cx.theme(), 16.0))
+                .text_color(cx.theme().muted_foreground),
         )
-        .on_mouse_down(MouseButton::Left, handler)
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .on_click(handler)
+}
+
+fn sidebar_close_button(id: SharedString, cx: &App) -> Button {
+    let theme = cx.theme();
+    let circle = theme
+        .foreground
+        .opacity(if theme.is_dark() { 0.065 } else { 0.04 });
+    let hover = theme
+        .foreground
+        .opacity(if theme.is_dark() { 0.14 } else { 0.10 });
+    let pressed = theme.foreground.opacity(0.18);
+    Button::new(id)
+        .custom(
+            ButtonCustomVariant::new(cx)
+                .foreground(theme.muted_foreground)
+                .hover(theme.transparent)
+                .active(theme.transparent),
+        )
+        .small()
+        .size(px(CLOSE_TARGET_SIZE))
+        .w(px(CLOSE_TARGET_SIZE))
+        .h(px(CLOSE_TARGET_SIZE))
+        .p_0()
+        .flex_shrink_0()
+        .rounded_full()
+        .tab_stop(false)
+        .accessibility_label("Close tab")
+        .tooltip("Close tab")
+        .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+        .child(
+            div()
+                .id("sidebar-close-circle")
+                .debug_selector(|| "sidebar-close-circle".into())
+                .flex()
+                .items_center()
+                .justify_center()
+                .size(px(CLOSE_CIRCLE_SIZE))
+                .rounded_full()
+                .bg(circle)
+                .group_hover("tab-close-control", move |s| s.bg(hover))
+                .group_active("tab-close-control", move |s| s.bg(pressed))
+                .child(
+                    svg()
+                        .path("phosphor/x-thin.svg")
+                        .size(px(8.0))
+                        .text_color(theme.foreground),
+                ),
+        )
+        .group("tab-close-control")
 }
 
 #[cfg(test)]
@@ -2475,8 +2592,7 @@ mod tests {
         PanelMode, RAIL_ICON_SIZE, RAIL_TOP_CONTROLS_HEIGHT, RailModeButtonAction, SessionSidebar,
         SidebarDragPreviewState, begin_rename_after_cancel_lifecycle, begin_rename_lifecycle,
         blur_should_commit_for_lifecycle, cancel_rename_lifecycle, normalize_sidebar_rename_label,
-        rail_slot_from_local_y, sidebar_directory_name, vertical_drag_overlay_probe_position,
-        vertical_slot_from_bounds,
+        rail_slot_from_local_y, vertical_drag_overlay_probe_position, vertical_slot_from_bounds,
     };
     use gpui::{Bounds, Point, Size, px};
 
@@ -2733,12 +2849,231 @@ mod tests {
                 view.update(cx, |_, cx| cx.notify());
                 let row = cx.debug_bounds("sidebar-session-row").unwrap();
                 let name = cx.debug_bounds("sidebar-session-name").unwrap();
-                let directory = cx.debug_bounds("sidebar-session-directory").unwrap();
                 assert!(row.top() < name.top());
-                assert!(name.bottom() <= directory.top());
-                assert!(directory.bottom() < row.bottom());
+                assert!((row.center().y - name.center().y).abs() <= px(0.5));
+                assert!(name.bottom() < row.bottom());
+                let surface = cx.debug_bounds("sidebar-session-surface").unwrap();
+                assert_eq!(row.center(), surface.center());
+                assert_eq!(
+                    surface.size.height,
+                    row.size.height - px(2.0 * super::ROW_SELECTION_INSET)
+                );
+                cx.simulate_mouse_move(row.center(), None, gpui::Modifiers::default());
+                let close = cx.debug_bounds("sidebar-close-circle").unwrap();
+                assert_eq!(close.center().y, row.center().y);
+                assert!(
+                    (row.right() - close.right() - (close.top() - row.top())).abs() < px(0.5),
+                    "the trailing circle must be concentric with the capsule end at every UI scale"
+                );
             }
         }
+    }
+
+    #[gpui::test]
+    fn expanded_close_keeps_text_stable_and_does_not_select_the_tab(cx: &mut gpui::TestAppContext) {
+        use std::{cell::Cell, rc::Rc};
+        cx.update(gpui_component::init);
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            let mut sidebar = SessionSidebar::new(cx);
+            let mut entry = session(None, None);
+            entry.name = "Long title with CJK 中文 and more text".into();
+            sidebar.sessions = vec![entry];
+            sidebar.mode = super::PanelMode::Pinned;
+            sidebar.width_motion = crate::motion::SidebarMotion::new(1.0);
+            sidebar
+        });
+        let closed = Rc::new(Cell::new(None));
+        let selected = Rc::new(Cell::new(0));
+        cx.update(|_, cx| {
+            let closed = closed.clone();
+            cx.subscribe(&view, move |_, event: &super::SidebarCloseTab, _| {
+                closed.set(Some(event.session_id));
+            })
+            .detach();
+            let selected = selected.clone();
+            cx.subscribe(&view, move |_, _: &super::SidebarSelect, _| {
+                selected.set(selected.get() + 1);
+            })
+            .detach();
+        });
+        for width in [
+            super::PANEL_MIN_WIDTH,
+            super::PANEL_WIDTH,
+            super::PANEL_MAX_WIDTH,
+        ] {
+            view.update(cx, |sidebar, cx| sidebar.set_panel_width(width, cx));
+            for mode in [
+                gpui_component::ThemeMode::Light,
+                gpui_component::ThemeMode::Dark,
+            ] {
+                cx.update(|_, cx| gpui_component::Theme::change(mode, None, cx));
+                view.update(cx, |_, cx| cx.notify());
+                let row = cx.debug_bounds("sidebar-session-row").unwrap();
+                let name = cx.debug_bounds("sidebar-session-name").unwrap();
+                cx.simulate_mouse_move(row.center(), None, gpui::Modifiers::default());
+                let close = cx.debug_bounds("sidebar-close-circle").unwrap();
+                assert_eq!(close.size, gpui::size(px(14.0), px(14.0)));
+                assert_eq!(row.center().y, close.center().y);
+                assert!(name.right() < close.left());
+                assert!(close.right() < row.right());
+                assert_eq!(name, cx.debug_bounds("sidebar-session-name").unwrap());
+                cx.simulate_click(close.center(), gpui::Modifiers::default());
+                assert_eq!(closed.get(), Some(0));
+                assert_eq!(
+                    selected.get(),
+                    0,
+                    "closing must not activate a background tab"
+                );
+                closed.set(None);
+            }
+        }
+    }
+
+    #[gpui::test]
+    fn busy_switches_from_a_compact_identity_ring_to_expanded_bars_without_moving_the_title(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(gpui_component::init);
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            let mut sidebar = SessionSidebar::new(cx);
+            sidebar.sessions = vec![session(
+                Some(con_core::terminal_status::Status {
+                    surface_id: 1,
+                    activity: con_core::terminal_status::Activity::Busy,
+                    evidence: con_core::terminal_status::Evidence::ProgramStatus,
+                    percent: None,
+                }),
+                None,
+            )];
+            sidebar
+        });
+        let brand = cx.debug_bounds("tab-status-brand").unwrap();
+        assert!(cx.debug_bounds("tab-status-glyph").is_none());
+        let slot = cx.debug_bounds("tab-status-slot").unwrap();
+        let markers = rendered_rings(&view, cx);
+        assert_eq!(markers.len(), 1);
+        assert_eq!(markers[0].center(), slot.center());
+        assert_eq!(brand.center(), slot.center());
+        assert!(markers[0].size.width > brand.size.width);
+        assert!(markers[0].size.height > brand.size.height);
+
+        view.update(cx, |sidebar, cx| {
+            sidebar.set_pinned(true, cx);
+            sidebar.width_motion = crate::motion::SidebarMotion::new(1.0);
+        });
+        assert!(cx.debug_bounds("tab-status-brand").is_none());
+        assert_eq!(rendered_rings(&view, cx).len(), 1);
+        let busy_title = cx.debug_bounds("sidebar-session-name").unwrap();
+        view.update(cx, |sidebar, cx| {
+            sidebar.sessions[0].status = None;
+            cx.notify();
+        });
+        assert!(cx.debug_bounds("tab-status-brand").is_some());
+        assert!(rendered_rings(&view, cx).is_empty());
+        assert_eq!(busy_title, cx.debug_bounds("sidebar-session-name").unwrap());
+    }
+
+    #[gpui::test]
+    fn expanded_toolbar_reclaims_the_rail_and_keeps_tools_clickable(cx: &mut gpui::TestAppContext) {
+        use std::{cell::Cell, rc::Rc};
+        cx.update(gpui_component::init);
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            let mut sidebar = SessionSidebar::new(cx);
+            sidebar.sessions = vec![session(None, None)];
+            sidebar.mode = PanelMode::Pinned;
+            sidebar.width_motion = crate::motion::SidebarMotion::new(1.0);
+            sidebar
+        });
+        let opened = Rc::new(Cell::new(None));
+        cx.update(|_, cx| {
+            let opened = opened.clone();
+            cx.subscribe(&view, move |_, event: &super::SidebarOpenToolSlot, _| {
+                opened.set(Some(event.slot));
+            })
+            .detach();
+        });
+        for width in [
+            super::PANEL_MIN_WIDTH,
+            super::PANEL_WIDTH,
+            super::PANEL_MAX_WIDTH,
+        ] {
+            view.update(cx, |sidebar, cx| sidebar.set_panel_width(width, cx));
+            let expand = cx.debug_bounds("tab-sidebar-rail-expand").unwrap();
+            let files = cx.debug_bounds("tab-sidebar-rail-files").unwrap();
+            let search = cx.debug_bounds("tab-sidebar-rail-search").unwrap();
+            let new = cx.debug_bounds("tab-sidebar-rail-new").unwrap();
+            assert_eq!(files.center().y, expand.center().y);
+            assert_eq!(search.center().y, expand.center().y);
+            assert_eq!(new.center().y, expand.center().y);
+            assert!(expand.right() < files.left() && files.right() < search.left());
+            assert!(search.right() < new.left());
+            let row = cx.debug_bounds("sidebar-session-row").unwrap();
+            assert_eq!(
+                row.left(),
+                px(8.0),
+                "no permanent tool column in expanded mode"
+            );
+            assert_eq!(row.size.width, px(width - 16.0));
+            assert!(row.top() > new.bottom());
+            cx.simulate_click(files.center(), gpui::Modifiers::default());
+            assert_eq!(opened.get(), Some(crate::activity_bar::ActivitySlot::Files));
+            cx.simulate_click(search.center(), gpui::Modifiers::default());
+            assert_eq!(
+                opened.get(),
+                Some(crate::activity_bar::ActivitySlot::Search)
+            );
+        }
+    }
+
+    #[gpui::test]
+    fn spring_samples_move_one_icon_and_keep_hitboxes_inside_the_reserved_width(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(gpui_component::init);
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            let mut sidebar = SessionSidebar::new(cx);
+            sidebar.sessions = vec![session(None, None)];
+            sidebar.mode = PanelMode::Pinned;
+            sidebar
+        });
+        let mut previous_y = None;
+        for t in [0.0, 0.1, 0.25, 0.5, 0.75, 1.0] {
+            view.update(cx, |sidebar, cx| {
+                sidebar.width_motion = crate::motion::SidebarMotion::new(t);
+                cx.notify();
+            });
+            let row = cx.debug_bounds("sidebar-session-row").unwrap();
+            let icon = cx.debug_bounds("tab-status-brand").unwrap();
+            let width = view.read_with(cx, |sidebar, _| sidebar.rendered_width());
+            assert!(row.left() >= px(0.0) && row.right() <= px(width));
+            assert!((icon.center().y - row.center().y).abs() < px(0.5));
+            assert!(icon.left() >= row.left() && icon.right() <= row.right());
+            if let Some(previous) = previous_y {
+                assert!(icon.center().y < previous);
+            }
+            previous_y = Some(icon.center().y);
+            view.read_with(cx, |sidebar, _| {
+                assert_eq!(sidebar.tab_bounds.borrow().len(), 1);
+            });
+        }
+        let expanded_icon = cx.debug_bounds("tab-status-brand").unwrap();
+        for t in [0.75, 0.5, 0.25, 0.0] {
+            view.update(cx, |sidebar, cx| {
+                sidebar.width_motion = crate::motion::SidebarMotion::new(t);
+                cx.notify();
+            });
+        }
+        let moving_compact = cx.debug_bounds("tab-status-brand").unwrap();
+        assert!(expanded_icon.center().y < moving_compact.center().y);
+        view.update(cx, |sidebar, cx| {
+            sidebar.mode = PanelMode::Collapsed;
+            cx.notify();
+        });
+        assert_eq!(
+            moving_compact,
+            cx.debug_bounds("tab-status-brand").unwrap(),
+            "settling onto the compact rail must not jump the icon"
+        );
     }
 
     #[gpui::test]
@@ -2992,18 +3327,20 @@ mod tests {
     }
 
     #[test]
-    fn directory_labels_preserve_real_names_without_synthetic_ellipsis() {
-        for (path, expected) in [
-            ("/tmp/con-sidebar-verification/project", "project"),
-            ("~/dev/项目/.config/", ".config"),
-            (r"C:\Users\dev\project\", "project"),
-            (r"\\server\share\project", "project"),
-            (r"/tmp/a\b", r"a\b"),
-            ("/", "/"),
-            ("~", "~"),
-            (r"C:\", r"C:\"),
+    fn single_line_tabs_keep_full_context_in_the_tooltip() {
+        for path in [
+            "/tmp/con-sidebar-verification/project",
+            "~/dev/项目/.config/",
+            r"C:\Users\dev\project\",
+            r"\\server\share\project",
         ] {
-            assert_eq!(sidebar_directory_name(path), expected);
+            let mut entry = session(None, Some("Waiting for approval".into()));
+            entry.name = "A long title that is truncated in the row".into();
+            entry.subtitle = Some(path.into());
+            assert_eq!(
+                super::sidebar_row_detail(&entry),
+                format!("{}\n{}\nWaiting for approval", entry.name, path)
+            );
         }
     }
 }

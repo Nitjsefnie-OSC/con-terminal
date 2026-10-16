@@ -41,15 +41,7 @@ fn tab_identity_icon_size(theme: &gpui_component::Theme) -> Pixels {
 }
 
 fn horizontal_tab_icon(icon: &'static str) -> &'static str {
-    match icon {
-        "phosphor/terminal.svg" | "phosphor/terminal-window.svg" => "tab-terminal-refined.png",
-        "phosphor/code.svg" => "tab-code.png",
-        "phosphor/file-code.svg" => "tab-file.png",
-        "phosphor/globe.svg" => "tab-remote.png",
-        "phosphor/pulse.svg" => "tab-monitor.png",
-        "phosphor/book-open.svg" => "tab-reader.png",
-        _ => icon,
-    }
+    crate::assets::tab_identity_asset(icon)
 }
 
 fn schedule_tab_reveal(

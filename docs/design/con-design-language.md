@@ -107,9 +107,9 @@ con is light-first (Flexoki Light default) but must excel in both themes.
   controls this shared material; Terminal Glass controls terminal surfaces
   independently. Do not use terminal opacity for some auxiliary regions and
   UI opacity for others.
-- Show each tab once: expanded vertical tabs live in the labeled list; compact
-  tabs live in the icon rail. Keep the rail's section controls available in
-  either state, and retain compact tab navigation beside Files/Search panels.
+- Show each tab once. Expanded vertical tabs use the full sidebar width, with
+  Files, Search and New Tab in a compact toolbar above the list. Compact tabs
+  live in the icon rail. Retain compact tab navigation beside Files/Search panels.
 - Title-bar action buttons share a 22px square, 6px rounding and centered
   vertical placement within the current title-bar height. Use component Button
   controls; neutral translucent fills distinguish open, hover and press states.
@@ -173,20 +173,46 @@ It should feel like the best place to do terminal-native work in the AI era.
 ### Vertical Tab Navigation
 
 - Compact tabs retain a 40px interaction target inside the 44px rail. Their
-  visible selection fill is a centered 32px square with 7px rounding, leaving
+  visible selection fill is a centered 32px square with 10px rounding, leaving
   breathing room without making click or drag targets smaller.
-- Use the Phosphor terminal-window glyph for generic shell tabs. Preserve
-  task-specific tab icons and replace them with the existing semantic status
-  glyph or progress ring when program status requires it.
+- Expanded navigation has no permanent left tool column and no redundant
+  "Tabs / count" heading. The mode control's tooltip includes the tab count.
+  Four 28px toolbar targets stay usable at the minimum 184px sidebar width.
+- Compact/expanded geometry shares the existing sidebar spring. Tool icons
+  move from the rail into the toolbar, and tab identities move up into the
+  full-width list. Mount one identity and one status marker per row, not two
+  overlaid navigators. Preserve the compact endpoint geometry so settling does
+  not jump. Respect Reduce Motion and retain outgoing rows during reversals.
+- Use the same cached bitmap identity catalog as horizontal tabs for built-in
+  terminal, code, file, remote, monitor and reader tabs. Keep third-party agent
+  logos intact. Compact busy tabs retain the icon inside a 24px animated ring;
+  expanded tabs use the same three-bar loader as horizontal tabs in the 16px
+  leading identity slot. Determinate compact progress retains the same ring
+  placement without spinning. Loading must not move the title or close control.
+  Attention, errors and completion retain the shared semantic status glyphs.
 - Selection is a low-opacity foreground fill, not a nearly opaque panel or
   an accent stripe. Custom tab colors retain their existing semantics. Text
   and SVG foregrounds remain solid to avoid rough edges on translucent chrome.
-- Expanded rows use a 40px baseline height with UI-font-aware growth. Titles
-  use the system UI font; directory metadata uses the configured mono font.
-  Both text lines scale with the UI setting and stay vertically inside the row.
-- Keep rename/close controls hover-only and preserve the existing tooltip,
+- Expanded rows use a single-line 32px baseline with UI-font-aware growth.
+  System-font titles align with 16px identity icons. Keep the full directory
+  and program-status detail in the hover tooltip rather than repeating a
+  second line under every tab.
+- Expanded selection is a thin, borderless capsule inset 3px from the 32px
+  hit target. Give selection enough fill contrast to read in both themes,
+  without adding an outline or a second card around the row.
+  Centre the identity and the trailing close target vertically, including
+  at larger UI font sizes. Reserve only one trailing action slot so long
+  titles do not lose width to invisible controls. Use the same identity assets
+  in the sidebar drag preview.
+- Close uses a hover-only component button with a small circular fill and thin
+  cross. Keep rename available through double-click and the context menu, and
+  preserve the existing tooltip,
   keyboard, middle-click and drag-reorder behavior. Do not add animation or
   terminal-state reads to style-only navigation updates.
+- Initialize horizontal-strip motion from both the restored tab count and
+  orientation, using the same visibility rule as later updates. Vertical tabs
+  must not leave an empty horizontal tray behind on cold startup. Keep the
+  horizontal multi-tab exit animation and pane-to-tab drag preview independent.
 - Set the UI font on tab navigation containers, not only their text labels:
   deferred context menus inherit their trigger's text style. Keep directory
   metadata and code explicitly monospace.

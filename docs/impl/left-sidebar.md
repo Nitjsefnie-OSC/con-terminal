@@ -12,20 +12,21 @@ rail/panel inside the sidebar.
 [optional tool/session rail] [active sidebar panel] [pane tree] [agent panel]
 ```
 
-When the left sidebar is hidden, none of the three sidebar columns render. This
+When the left sidebar is hidden, none of its navigation or content renders. This
 preserves the clean terminal view users expect from the sidebar toggle.
 
 When the left sidebar is visible:
 
-- vertical tabs keep a 44 px rail for Files/Search, session controls, and
-  session icons when `appearance.tabs_orientation = "vertical"`,
-- the adjacent panel shows either Files, Search, or the unfolded session list,
+- compact vertical tabs keep a 44 px rail for Files/Search, session controls,
+  and session icons when `appearance.tabs_orientation = "vertical"`,
+- expanded vertical tabs use the whole saved sidebar width, with Files/Search
+  and New Tab in a horizontal toolbar above the list,
 - Files/Search and sessions are one sidebar system: opening Files/Search keeps a
   thin session/tool rail and swaps the adjacent panel to Files or Search.
 
 Each tab appears in one navigation list at a time. With the session list
-expanded, the rail contains only the section controls and New Tab; it does not
-repeat the tab icons. Collapsing the list or opening Files/Search restores the
+expanded, there is no additional controls-only rail consuming title space.
+Collapsing the list or opening Files/Search restores the
 session tiles so tabs remain reachable without changing sidebar sections.
 Selected tabs use a surface fill and foreground ink, not an extra green stripe.
 Custom tab colors are preserved as fills in both compact and expanded views.
@@ -44,8 +45,8 @@ Compact tab hover cards use one borderless surface with equal 12 px padding;
 there is no external edge strip. Names and pane/status metadata use the UI font,
 while paths and terminal titles use the mono font. Text follows UI font sizing,
 and GPUI's anchored element fits the measured card to the available window,
-including wrapped paths. Expanded rows show only the working directory name;
-full home-abbreviated paths are preserved for the hover card, without synthetic
+including wrapped paths. Expanded rows show a single-line tab name; full paths
+and program-status details remain available through a compact tooltip, without synthetic
 middle ellipses. Single-pane cards omit redundant terminal titles; split-tab
 cards retain titles that differ from the tab name and path. Expanded rows already
 show tab identity, so they do not need a second floating identity card.
@@ -74,7 +75,7 @@ show tab identity, so they do not need a second floating identity card.
 ## Width Rules
 
 The sidebar width is one shared budget. In vertical-tab mode, the 44 px rail
-plus whichever panel is active must equal the unfolded session-list width, so
+plus the active Files/Search panel must equal the full-width session list, so
 switching between Sessions, Files, and Search never changes the terminal/editor
 origin. In horizontal-tab mode the file/search panel uses that same saved width.
 

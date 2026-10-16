@@ -95,6 +95,19 @@ pub fn png_preview(path: &'static str, logical_size: f32) -> ImageSource {
     }))
 }
 
+/// One identity catalog for horizontal tabs, the sidebar and drag previews.
+pub(crate) fn tab_identity_asset(icon: &'static str) -> &'static str {
+    match icon {
+        "phosphor/terminal.svg" | "phosphor/terminal-window.svg" => "tab-terminal-refined.png",
+        "phosphor/code.svg" => "tab-code.png",
+        "phosphor/file-code.svg" => "tab-file.png",
+        "phosphor/globe.svg" => "tab-remote.png",
+        "phosphor/pulse.svg" => "tab-monitor.png",
+        "phosphor/book-open.svg" => "tab-reader.png",
+        _ => icon,
+    }
+}
+
 /// Tab identities may be small bitmap objects; action/status glyphs stay SVG.
 pub(crate) fn tab_identity_icon(
     path: &'static str,

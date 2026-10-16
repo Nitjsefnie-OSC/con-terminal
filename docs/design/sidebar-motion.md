@@ -12,13 +12,18 @@ introduced. Settled sidebars request no animation frames. Reduce Motion settles
 immediately without requesting another frame.
 
 The compact/expanded vertical-tab rail uses the same spring in both directions,
-including macOS. Keep the outgoing session rows mounted until collapse settles;
-clip a fixed-width panel rather than squeezing its text. The workspace samples
-the rail motion so terminal reservation and the sidebar edge move together.
+including macOS. Keep outgoing session rows mounted until collapse settles.
+The expanded tab navigator uses the full sidebar width: its tools move between
+the vertical compact rail and a horizontal toolbar. Sample these positions,
+row stride and reserved width from the same spring; do not crossfade two lists
+or create a timer for each icon. Keep tab titles single-line and clipped as
+they reveal, not wrapped repeatedly during the transition. The compact endpoint
+must match the settled rail's icon geometry. The workspace samples the rail
+motion so terminal reservation and the sidebar edge move together.
 The critically damped response uses an angular frequency of 25 radians/second:
 a gentle acceleration and a short, non-bouncing deceleration, not a long fade.
 
-The sidebar content keeps its full width behind a clipped viewport. The left
+File, search and agent panel content keeps its full width behind a clipped viewport. The left
 sidebar moves toward the left window edge; the right sidebar moves toward the
 right edge. Agent content remains behind its existing cached view boundary,
 with stable width and height. Do not fade text or narrow its layout on every
