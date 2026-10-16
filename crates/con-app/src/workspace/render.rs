@@ -335,7 +335,7 @@ impl Render for ConWorkspace {
             // Pane promotion needs its global drop target immediately; do not
             // make a pointer drag wait for decorative caption handoff motion.
             let pane_promotion = self.pane_title_drag.is_some();
-            if pane_promotion {
+            if pane_promotion || !self.vertical_tabs_enabled() {
                 self.caption_dock = frame::CaptionDockMotion::new(false);
             }
             let wants_dock = self.vertical_tabs_enabled()
@@ -471,6 +471,7 @@ impl Render for ConWorkspace {
             .title_bar
             .blend(theme.foreground.opacity(0.028 * canvas_depth))
             .opacity(ui_surface_opacity);
+        #[cfg(not(target_os = "macos"))]
         let input_bar_surface_color = top_bar_surface_color;
         // Auxiliary chrome shares the titlebar's material. These quiet inner
         // edges are decoration, not the native transition/drag seam covers.
@@ -482,10 +483,13 @@ impl Render for ConWorkspace {
             } else {
                 0.018
             }));
-        let chrome_edge_color =
-            theme
-                .foreground
-                .opacity(if theme.is_dark() { 0.055 } else { 0.045 });
+        let chrome_edge_color = theme.foreground.opacity(if cfg!(target_os = "macos") {
+            0.0
+        } else if theme.is_dark() {
+            0.055
+        } else {
+            0.045
+        });
         let chrome_resize_hover_color = theme.foreground.opacity(0.08);
         let (tab_sidebar_width, sidebar_content_width) = if show_left_panel {
             let sidebar = self.sidebar.read(cx);
@@ -517,10 +521,10 @@ impl Render for ConWorkspace {
         let terminal_content_width =
             (window_width - terminal_content_left - agent_panel_outer_width).max(0.0);
         #[cfg(target_os = "macos")]
-        let (terminal_content_left, terminal_content_width) = (
-            terminal_content_left + frame::INPUT_ISLAND_INSET * canvas_depth,
-            (terminal_content_width - 2.0 * frame::INPUT_ISLAND_INSET * canvas_depth).max(0.0),
-        );
+        let (terminal_content_left, terminal_content_width) = {
+            let (inset, width) = frame::input_island_geometry(terminal_content_width, canvas_depth);
+            (terminal_content_left + inset, width)
+        };
         let pane_tree_rendered = {
             let workspace = cx.weak_entity();
             let begin_drag_cb =
@@ -638,11 +642,6 @@ impl Render for ConWorkspace {
             .min_h_0()
             .w_full()
             .overflow_hidden()
-            .map(|content| {
-                #[cfg(target_os = "macos")]
-                let content = content.w_auto().m(px(frame::CANVAS_INSET * canvas_depth));
-                content
-            })
             .child(pane_tree_rendered)
             .on_children_prepainted(move |bounds_list, _window, _cx| {
                 let Some(bounds) = bounds_list.first().copied() else {
@@ -780,25 +779,17 @@ impl Render for ConWorkspace {
             }
         }
 
-        #[cfg(target_os = "macos")]
-        let pane_content = div()
-            .relative()
-            .flex()
-            .flex_col()
-            .flex_1()
-            .min_h_0()
-            .min_w_0()
-            .child(
-                self.canvas_surround
-                    .render(top_bar_surface_color, canvas_depth),
-            )
-            .child(pane_content);
         let mut terminal_area = div()
             .flex()
             .flex_col()
             .flex_1()
             .min_w_0()
             .min_h_0()
+            .map(|area| {
+                #[cfg(target_os = "macos")]
+                let area = area.relative().m(px(frame::CANVAS_INSET * canvas_depth));
+                area
+            })
             .child(pane_content);
 
         #[cfg(not(target_os = "macos"))]
@@ -853,27 +844,42 @@ impl Render for ConWorkspace {
             #[cfg(target_os = "macos")]
             {
                 let inset = frame::INPUT_ISLAND_INSET * canvas_depth;
+                let width = (window_width - left_panel_width - agent_panel_outer_width).max(0.0);
+                let (_, island_width) = frame::input_island_geometry(width, canvas_depth);
+                let island = theme
+                    .title_bar
+                    .blend(if theme.is_dark() {
+                        theme.foreground.opacity(0.065)
+                    } else {
+                        gpui::white().opacity(0.45)
+                    })
+                    .opacity(ui_surface_opacity);
+                // Reserve terminal rows, not a second chrome strip. The island
+                // is an overlay on a continuous canvas safe area; output and
+                // selections never disappear beneath the composer.
                 terminal_area = terminal_area.child(
                     div()
-                        .h(px(
-                            (full_input_bar_height + inset * 2.0) * input_bar_progress
-                        ))
+                        .relative()
+                        .h(px(frame::input_safe_height(
+                            full_input_bar_height,
+                            input_bar_progress,
+                            canvas_depth,
+                        )))
                         .flex_shrink_0()
                         .overflow_hidden()
-                        .bg(input_bar_surface_color)
                         .child(
                             div()
-                                .m(px(inset))
+                                .absolute()
+                                .top(px(inset))
+                                .left(px(((width
+                                    - 2.0 * frame::CANVAS_INSET * canvas_depth
+                                    - island_width)
+                                    * 0.5)
+                                    .max(0.0)))
+                                .w(px(island_width))
                                 .h(px(full_input_bar_height))
                                 .rounded(px(11.0 * canvas_depth))
-                                .bg(theme.foreground.opacity(if theme.is_dark() {
-                                    0.06 * canvas_depth
-                                } else {
-                                    0.0
-                                }))
-                                .when(!theme.is_dark(), |island| {
-                                    island.bg(gpui::white().opacity(0.72 * canvas_depth))
-                                })
+                                .bg(island)
                                 .child(
                                     self.input_bar.clone().cached(
                                         StyleRefinement::default()
@@ -885,6 +891,30 @@ impl Render for ConWorkspace {
                 );
             }
         }
+
+        #[cfg(target_os = "macos")]
+        let terminal_area = div()
+            .relative()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_w_0()
+            .min_h_0()
+            .child(self.canvas_surround.render(
+                top_bar_surface_color,
+                canvas_depth,
+                if input_bar_reserved_for_layout {
+                    frame::input_safe_height(
+                        self.input_bar.read(cx).rendered_height(cx).as_f32(),
+                        input_bar_progress,
+                        canvas_depth,
+                    )
+                } else {
+                    0.0
+                },
+                terminal_surface_color.opacity(self.terminal_opacity),
+            ))
+            .child(terminal_area);
 
         let mut main_area = div().relative().flex().flex_1().min_h_0();
 
@@ -1443,7 +1473,12 @@ impl Render for ConWorkspace {
         root = root.child(main_area);
         #[cfg(target_os = "macos")]
         {
-            let caption_width = window_width + (left_panel_width - window_width) * caption.dock;
+            let caption_width = frame::caption_width(
+                window_width,
+                left_panel_width,
+                caption.dock,
+                top_bar::top_bar_leading_pad(window),
+            );
             root = root.child(
                 div()
                     .absolute()

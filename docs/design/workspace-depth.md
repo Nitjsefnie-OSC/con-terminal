@@ -3,16 +3,21 @@
 ## Visual hierarchy
 
 On macOS, workspaces with sidebars or multiple tabs use an inset terminal
-canvas. It has 6pt of breathing room and 9pt outer corners. Split panes remain
+canvas. It has 4pt of breathing room and 8pt outer corners. Split panes remain
 part of that one canvas: interior dividers are straight, and no separate cards or
 shadows compete with terminal content.
 
-The input bar occupies its own layout slot below the canvas. An 8pt inset and
-11pt corner radius give it a distinct silhouette without placing a floating
-overlay over the last terminal row. It uses Window Chrome, not Terminal Glass.
-The terminal keeps its existing transparency, blur and theme. Light chrome uses
-a lighter input surface rather than a recessed grey well; dark chrome uses a
-quiet foreground lift. Neither needs a shadow or outline.
+The input bar floats on the continuous terminal canvas, rather than sitting in
+a separate chrome strip. A 10pt safe-area inset and 11pt corner radius distinguish
+the composer; its width stops at 960pt and remains centered on wider canvases.
+Its popovers use the same horizontal geometry. The terminal viewport reserves
+the composer's height and safe area so the final row and selections never hide
+behind the island. Only this reserved area receives a terminal-colored native
+material; never paint a second fill over native terminal content. The composer uses
+Window Chrome, while the surrounding safe area uses Terminal Glass opacity.
+Light chrome uses a gentle white lift; dark chrome uses a foreground lift.
+Neither needs a shadow or outline. Sidebar boundaries use the canvas gutter,
+not an additional decorative vertical line.
 
 One tab with both sidebars hidden returns to the original clean terminal:
 no canvas inset, no corner mask and no input-island margin. These dimensions
@@ -25,6 +30,10 @@ by the sidebar, not by a second translucent header rectangle.
 Compact navigation, hidden navigation, Files/Search and horizontal tabs retain
 the global row. Native traffic lights must never overlap a 44pt rail or a
 terminal pane.
+The left-sidebar visibility control remains available when docked. The caption
+must fit the traffic lights and all three visibility controls throughout width
+changes. Switching to horizontal tabs restores the global row immediately;
+outgoing docking motion must not briefly expose a terminal behind that row.
 
 ## Ownership and presentation
 
@@ -40,8 +49,17 @@ terminal pane.
   Exact complementary antialiased shapes do not produce full coverage under
   source-over compositing. This small overlap is not an outline or an opaque
   terminal backing; the rest of the terminal stays untouched. Leave AppKit's
-  parent view/layer hierarchy alone: Con owns host masks, not the container's
-  backing-store composition. No extra native material views or layers are used.
+  container's backing-store composition alone: Con owns host masks, not the
+  parent's backing layer.
+- The input safe area has one cached, non-interactive native material view
+  below GPUI. It is confined to the reserved terminal rows, uses the terminal's
+  background and opacity, and shares the canvas mask. It is not a full-window
+  backing and cannot receive mouse input or focus. When the input bar hides,
+  hide this view in the same presentation frame. GPUI retains ownership of the
+  composer and all its controls. A GPUI-colored extension is not interchangeable
+  with this native region: the preview exposed a visible material step between
+  it and the adjacent native terminal, despite equal RGB/opacity inputs.
+  This does not establish the underlying color/compositing cause.
 - The clip path is cached per host. A window-scoped geometry generation
   invalidates otherwise unchanged terminal layouts when the outer canvas moves.
 - Pane headers round only the corners that touch the canvas's top corners.

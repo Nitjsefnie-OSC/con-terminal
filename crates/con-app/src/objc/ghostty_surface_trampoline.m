@@ -36,6 +36,17 @@ static char kConTerminalCanvasMaskKey;
 @implementation ConTerminalCanvasMask
 @end
 
+// Material only: this never receives input or becomes a first responder.
+@interface ConTerminalCanvasSafeArea : NSView
+@property(nonatomic, strong) NSColor *materialColor;
+@property(nonatomic) uint64_t clipGeneration;
+@end
+@implementation ConTerminalCanvasSafeArea
+- (NSView *)hitTest:(NSPoint)point { return nil; }
+- (BOOL)acceptsFirstResponder { return NO; }
+@end
+static char kConTerminalCanvasSafeAreaKey;
+
 static NSView *con_terminal_parent(NSView *gpui) {
     return gpui.superview ?: gpui;
 }
@@ -115,6 +126,45 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     host.layer.mask = mask.layer;
     [CATransaction commit];
     CGPathRelease(path);
+}
+
+bool con_terminal_canvas_set_safe_area(void *gpui_ptr, double height,
+                                      double red, double green, double blue, double alpha) {
+    NSView *gpui = (__bridge NSView *)gpui_ptr;
+    NSView *parent = con_terminal_parent(gpui);
+    ConTerminalCanvasClip *clip = objc_getAssociatedObject(parent, &kConTerminalCanvasKey);
+    if (parent == nil || clip == nil || !isfinite(height) || !isfinite(red) ||
+        !isfinite(green) || !isfinite(blue) || !isfinite(alpha)) return false;
+    height = fmax(0, fmin(height, clip.rect.size.height));
+    ConTerminalCanvasSafeArea *view = objc_getAssociatedObject(parent, &kConTerminalCanvasSafeAreaKey);
+    if (height == 0) {
+        if (view == nil || view.hidden) return false;
+        view.hidden = YES;
+        return true;
+    }
+    NSRect rect = NSMakeRect(clip.rect.origin.x, clip.rect.origin.y,
+                            clip.rect.size.width, height);
+    NSColor *color = [NSColor colorWithSRGBRed:red green:green blue:blue alpha:alpha];
+    if (view == nil) {
+        view = [[ConTerminalCanvasSafeArea alloc] initWithFrame:rect];
+        view.wantsLayer = YES;
+        [parent addSubview:view positioned:NSWindowBelow relativeTo:gpui];
+        objc_setAssociatedObject(parent, &kConTerminalCanvasSafeAreaKey, view,
+                                 OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    } else if (!view.hidden && NSEqualRects(view.frame, rect) &&
+               [view.materialColor isEqual:color] && view.clipGeneration == clip.generation) {
+        return false;
+    }
+    [CATransaction begin];
+    [CATransaction setDisableActions:YES];
+    view.frame = rect;
+    view.layer.backgroundColor = color.CGColor;
+    view.hidden = NO;
+    con_terminal_canvas_apply_clip((__bridge void *)view);
+    [CATransaction commit];
+    view.materialColor = color;
+    view.clipGeneration = clip.generation;
+    return true;
 }
 
 uint8_t con_terminal_canvas_header_corners(void *gpui_ptr, double x, double y,

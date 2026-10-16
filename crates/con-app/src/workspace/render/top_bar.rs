@@ -2758,7 +2758,7 @@ impl ConWorkspace {
         } else {
             "Show left sidebar"
         };
-        if !caption_docked {
+        {
             tab_controls = tab_controls.child(
                 chrome_button(
                     "toggle-left-sidebar",
