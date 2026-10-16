@@ -4,6 +4,32 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.137` - 2026-10-16
+
+### Changed
+
+**Vertical Tabs**
+
+- Expanded tabs use the full sidebar width, with Files, Search and New Tab in
+  a compact toolbar above the list. Refined selection fills, icon sizing and
+  hover-only close controls keep navigation compact in light and dark themes.
+  _(PR [#483](https://github.com/nowledge-co/con-terminal/pull/483) by [@wey-gu](https://github.com/wey-gu))_
+- Icons move smoothly between the compact rail and expanded list. Compact
+  working tabs keep their icon inside a rotating ring; expanded tabs use the
+  same pulsing bars as horizontal tabs. Motion respects Reduce Motion.
+  _(PR [#483](https://github.com/nowledge-co/con-terminal/pull/483) by [@wey-gu](https://github.com/wey-gu))_
+- Built-in tab icons now match across horizontal and vertical navigation.
+  Application logos and custom tab colors are preserved.
+  _(PR [#483](https://github.com/nowledge-co/con-terminal/pull/483) by [@wey-gu](https://github.com/wey-gu))_
+
+### Fixed
+
+**Tabs**
+
+- Reopening a window with multiple vertical tabs no longer leaves an empty
+  horizontal capsule in the titlebar.
+  _(PR [#483](https://github.com/nowledge-co/con-terminal/pull/483) by [@wey-gu](https://github.com/wey-gu))_
+
 ## `v0.1.0-beta.136` - 2026-10-16
 
 ### Fixed
