@@ -21,6 +21,7 @@ static char kConTerminalCanvasMaskKey;
 @property(nonatomic) NSRect rect;
 @property(nonatomic) CGFloat radius;
 @property(nonatomic) uint64_t generation;
+@property(nonatomic) CGFloat scale;
 @end
 @implementation ConTerminalCanvasClip
 @end
@@ -46,18 +47,28 @@ bool con_terminal_canvas_set_clip(void *gpui_ptr, double x, double y,
     if (!isfinite(x) || !isfinite(y) || !isfinite(width) || !isfinite(height) ||
         !isfinite(radius) || width < 0 || height < 0) return false;
     radius = fmax(0.0, fmin(radius, fmin(width, height) * 0.5));
+    NSView *gpui = (__bridge NSView *)gpui_ptr;
+    CGFloat scale = gpui.window != nil ? gpui.window.backingScaleFactor : 1.0;
+    if (!isfinite(scale) || scale <= 0.0) scale = 1.0;
     NSRect rect = NSMakeRect(x, parent.bounds.size.height - y - height, width, height);
     ConTerminalCanvasClip *clip = objc_getAssociatedObject(parent, &kConTerminalCanvasKey);
     if (clip == nil) {
         clip = [ConTerminalCanvasClip new];
         objc_setAssociatedObject(parent, &kConTerminalCanvasKey, clip, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
-    } else if (NSEqualRects(clip.rect, rect) && clip.radius == radius) {
+    } else if (NSEqualRects(clip.rect, rect) && clip.radius == radius && clip.scale == scale) {
         return false;
     }
     clip.rect = rect;
     clip.radius = radius;
+    clip.scale = scale;
     clip.generation += 1;
     return true;
+}
+
+double con_terminal_canvas_radius(void *gpui_ptr) {
+    NSView *parent = con_terminal_parent((__bridge NSView *)gpui_ptr);
+    ConTerminalCanvasClip *clip = objc_getAssociatedObject(parent, &kConTerminalCanvasKey);
+    return clip.radius;
 }
 
 uint64_t con_terminal_canvas_generation(void *host_ptr) {
@@ -87,6 +98,14 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     mask.bounds = host.bounds;
     mask.radius = clip.radius;
     mask.scale = scale;
+    if (clip.radius <= 0.0 && NSContainsRect(rect, host.bounds)) {
+        // Clean mode needs no extra offscreen mask for an already-contained host.
+        [CATransaction begin];
+        [CATransaction setDisableActions:YES];
+        host.layer.mask = nil;
+        [CATransaction commit];
+        return;
+    }
     CGPathRef path = CGPathCreateWithRoundedRect(NSRectToCGRect(rect), clip.radius, clip.radius, NULL);
     [CATransaction begin];
     [CATransaction setDisableActions:YES];
@@ -102,7 +121,7 @@ uint8_t con_terminal_canvas_header_corners(void *gpui_ptr, double x, double y,
                                           double width) {
     NSView *parent = con_terminal_parent((__bridge NSView *)gpui_ptr);
     ConTerminalCanvasClip *clip = objc_getAssociatedObject(parent, &kConTerminalCanvasKey);
-    if (clip == nil) return 0;
+    if (clip == nil || clip.radius <= 0.0) return 0;
     CGFloat top = parent.bounds.size.height - y;
     if (fabs(top - NSMaxY(clip.rect)) > 0.25) return 0;
     uint8_t corners = 0;

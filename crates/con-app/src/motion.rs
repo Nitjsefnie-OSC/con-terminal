@@ -36,7 +36,7 @@ impl SidebarMotion {
         })
     }
 
-    fn retarget_at(&mut self, target: f32, now: Instant) {
+    pub(crate) fn retarget_at(&mut self, target: f32, now: Instant) {
         if self.target == target {
             return;
         }
@@ -63,7 +63,7 @@ impl SidebarMotion {
         })
     }
 
-    fn update_at(
+    pub(crate) fn update_at(
         &mut self,
         now: Instant,
         reduce_motion: bool,

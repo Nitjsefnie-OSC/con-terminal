@@ -343,24 +343,10 @@ impl Render for ConWorkspace {
                 && !self.sidebar_tools_open
                 && !pane_promotion
                 && self.sidebar.read(cx).is_pinned();
-            let ready = self.left_panel_motion.current() == 1.0
-                && self.sidebar.read(cx).caption_dock_ready();
-            let caption = self.caption_dock.value(wants_dock, ready, window, cx);
-            self.sidebar.update(cx, |sidebar, _| {
-                sidebar.set_caption_width_hold(caption.hold_sidebar);
-            });
-            caption
+            self.caption_dock.value(wants_dock, window, cx)
         };
-        #[cfg(target_os = "macos")]
-        let keep_left_panel = caption.hold_sidebar;
-        #[cfg(not(target_os = "macos"))]
-        let keep_left_panel = false;
         self.left_panel_motion
-            .set_target(if self.left_panel_open || keep_left_panel {
-                1.0
-            } else {
-                0.0
-            });
+            .set_target(if self.left_panel_open { 1.0 } else { 0.0 });
         self.agent_panel_motion
             .set_target(if self.agent_panel_open { 1.0 } else { 0.0 });
         let left_panel_progress = self.left_panel_motion.value(window, cx);
@@ -372,6 +358,16 @@ impl Render for ConWorkspace {
             .set_target(if self.input_bar_visible { 1.0 } else { 0.0 });
         let agent_panel_progress = self.agent_panel_motion.value(window, cx);
         let input_bar_progress = self.input_bar_motion.value(window, cx);
+        #[cfg(target_os = "macos")]
+        let canvas_depth = {
+            let depth = if self.tabs.len() > 1 {
+                1.0
+            } else {
+                left_panel_progress.max(agent_panel_progress)
+            };
+            self.canvas_depth_progress = depth;
+            depth
+        };
         let tab_strip_progress = self.tab_strip_motion.value(window, cx);
         let agent_panel_transitioning = self.agent_panel_motion.is_animating();
         let input_bar_transitioning = self.input_bar_motion.is_animating();
@@ -468,7 +464,13 @@ impl Render for ConWorkspace {
         let chrome_static_seam_color =
             terminal_separator_over_backdrop(terminal_surface_color, theme);
         let pane_divider_color = terminal_separator_over_backdrop(terminal_surface_color, theme);
+        #[cfg(not(target_os = "macos"))]
         let top_bar_surface_color = theme.title_bar.opacity(ui_surface_opacity);
+        #[cfg(target_os = "macos")]
+        let top_bar_surface_color = theme
+            .title_bar
+            .blend(theme.foreground.opacity(0.028 * canvas_depth))
+            .opacity(ui_surface_opacity);
         let input_bar_surface_color = top_bar_surface_color;
         // Auxiliary chrome shares the titlebar's material. These quiet inner
         // edges are decoration, not the native transition/drag seam covers.
@@ -516,8 +518,8 @@ impl Render for ConWorkspace {
             (window_width - terminal_content_left - agent_panel_outer_width).max(0.0);
         #[cfg(target_os = "macos")]
         let (terminal_content_left, terminal_content_width) = (
-            terminal_content_left + frame::INPUT_ISLAND_INSET,
-            (terminal_content_width - 2.0 * frame::INPUT_ISLAND_INSET).max(0.0),
+            terminal_content_left + frame::INPUT_ISLAND_INSET * canvas_depth,
+            (terminal_content_width - 2.0 * frame::INPUT_ISLAND_INSET * canvas_depth).max(0.0),
         );
         let pane_tree_rendered = {
             let workspace = cx.weak_entity();
@@ -638,7 +640,7 @@ impl Render for ConWorkspace {
             .overflow_hidden()
             .map(|content| {
                 #[cfg(target_os = "macos")]
-                let content = content.w_auto().m(px(frame::CANVAS_INSET));
+                let content = content.w_auto().m(px(frame::CANVAS_INSET * canvas_depth));
                 content
             })
             .child(pane_tree_rendered)
@@ -786,7 +788,10 @@ impl Render for ConWorkspace {
             .flex_1()
             .min_h_0()
             .min_w_0()
-            .child(self.canvas_surround.render(top_bar_surface_color))
+            .child(
+                self.canvas_surround
+                    .render(top_bar_surface_color, canvas_depth),
+            )
             .child(pane_content);
         let mut terminal_area = div()
             .flex()
@@ -847,7 +852,7 @@ impl Render for ConWorkspace {
             }
             #[cfg(target_os = "macos")]
             {
-                let inset = frame::INPUT_ISLAND_INSET;
+                let inset = frame::INPUT_ISLAND_INSET * canvas_depth;
                 terminal_area = terminal_area.child(
                     div()
                         .h(px(
@@ -860,12 +865,15 @@ impl Render for ConWorkspace {
                             div()
                                 .m(px(inset))
                                 .h(px(full_input_bar_height))
-                                .rounded(px(11.0))
+                                .rounded(px(11.0 * canvas_depth))
                                 .bg(theme.foreground.opacity(if theme.is_dark() {
-                                    0.045
+                                    0.06 * canvas_depth
                                 } else {
-                                    0.055
+                                    0.0
                                 }))
+                                .when(!theme.is_dark(), |island| {
+                                    island.bg(gpui::white().opacity(0.72 * canvas_depth))
+                                })
                                 .child(
                                     self.input_bar.clone().cached(
                                         StyleRefinement::default()
@@ -1435,8 +1443,7 @@ impl Render for ConWorkspace {
         root = root.child(main_area);
         #[cfg(target_os = "macos")]
         {
-            let caption_width =
-                window_width + (full_left_panel_width - window_width) * caption.dock;
+            let caption_width = window_width + (left_panel_width - window_width) * caption.dock;
             root = root.child(
                 div()
                     .absolute()

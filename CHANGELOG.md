@@ -12,7 +12,8 @@ con is still pre-release, so entries may group related beta work while the produ
 
 - The terminal sits in a subtly rounded canvas, with the input bar in its own
   inset space below. Expanded vertical tabs bring window controls into the
-  sidebar, leaving more height for terminal content.
+  sidebar in one continuous motion, leaving more height for terminal content.
+  A single tab without sidebars keeps the clean, edge-to-edge terminal layout.
 
 ## `v0.1.0-beta.138` - 2026-10-16
 

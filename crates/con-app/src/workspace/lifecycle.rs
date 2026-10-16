@@ -920,9 +920,9 @@ impl ConWorkspace {
             agent_panel_open,
             agent_panel_motion: SidebarMotion::new(if agent_panel_open { 1.0 } else { 0.0 }),
             #[cfg(target_os = "macos")]
-            // The sidebar first resolves its restored width. Only then can it
-            // take ownership of the caption without covering the terminal.
             caption_dock: frame::CaptionDockMotion::new(false),
+            #[cfg(target_os = "macos")]
+            canvas_depth_progress: 0.0,
             #[cfg(target_os = "macos")]
             canvas_surround: frame::CanvasSurround::default(),
             left_panel_motion: SidebarMotion::new(if session.left_panel_open.unwrap_or(true) {

@@ -161,7 +161,8 @@ impl ConWorkspace {
             .min(popup_available_width));
         let popup_bottom = self.input_bar.read(cx).skill_popup_offset(cx);
         #[cfg(target_os = "macos")]
-        let popup_bottom = popup_bottom + px(2.0 * frame::INPUT_ISLAND_INSET);
+        let popup_bottom =
+            popup_bottom + px(2.0 * frame::INPUT_ISLAND_INSET * self.canvas_depth_progress);
         let skills = self
             .input_bar
             .read(cx)
@@ -253,7 +254,8 @@ impl ConWorkspace {
             .min(popup_available_width));
         let popup_bottom = self.input_bar.read(cx).skill_popup_offset(cx);
         #[cfg(target_os = "macos")]
-        let popup_bottom = popup_bottom + px(2.0 * frame::INPUT_ISLAND_INSET);
+        let popup_bottom =
+            popup_bottom + px(2.0 * frame::INPUT_ISLAND_INSET * self.canvas_depth_progress);
         let candidates = self.input_bar.read(cx).path_completion_candidates();
         let sel = self
             .input_bar
@@ -362,7 +364,7 @@ impl ConWorkspace {
                     self.input_bar.read(cx).rendered_height(cx).as_f32() + {
                         #[cfg(target_os = "macos")]
                         {
-                            2.0 * frame::INPUT_ISLAND_INSET
+                            2.0 * frame::INPUT_ISLAND_INSET * self.canvas_depth_progress
                         }
                         #[cfg(not(target_os = "macos"))]
                         {

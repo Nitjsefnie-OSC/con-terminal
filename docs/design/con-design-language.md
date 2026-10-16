@@ -101,7 +101,8 @@ con is light-first (Flexoki Light default) but must excel in both themes.
 - The titlebar, left sidebar, agent sidebar, and bottom input bar share one
   translucent chrome material. On macOS, an inset terminal canvas and a
   separately reserved input island provide depth without borders or shadows;
-  expanded vertical navigation takes ownership of the caption controls. See
+  expanded vertical navigation takes ownership of the caption controls.
+  A single tab without sidebars keeps the original flush layout. See
   `docs/design/workspace-depth.md` for geometry and native clipping. Other
   platforms keep their flush panel layout. Use the same
   quiet foreground-derived fill for their terminal-facing 1px edges, with no
