@@ -138,6 +138,12 @@ impl ConWorkspace {
             0.0
         };
         let leading_panel_w = self.leading_panel_width_for_pane_resize(cx);
+        #[cfg(target_os = "macos")]
+        let rendered_bounds = self
+            .pane_content_bounds
+            .lock()
+            .ok()
+            .and_then(|bounds| *bounds);
 
         let pane_tree = &mut self.tabs[self.active_tab].pane_tree;
         if !pane_tree.is_dragging() {
@@ -145,6 +151,21 @@ impl ConWorkspace {
         }
 
         let (current_pos, total_size) = if let Some(dir) = pane_tree.dragging_direction() {
+            #[cfg(target_os = "macos")]
+            if let Some(bounds) = rendered_bounds {
+                let (position, extent) = match dir {
+                    SplitDirection::Horizontal => {
+                        (event.position.x - bounds.left(), bounds.size.width)
+                    }
+                    SplitDirection::Vertical => {
+                        (event.position.y - bounds.top(), bounds.size.height)
+                    }
+                };
+                if pane_tree.update_drag(position.as_f32(), extent.as_f32()) {
+                    cx.notify();
+                }
+                return true;
+            }
             match dir {
                 SplitDirection::Horizontal => (
                     f32::from(event.position.x) - leading_panel_w,
@@ -309,8 +330,37 @@ impl Render for ConWorkspace {
 
         // Resolve boolean state here so all reveal paths (keyboard, Files,
         // agent requests, restored state) share the same motion contract.
+        #[cfg(target_os = "macos")]
+        let caption = {
+            // Pane promotion needs its global drop target immediately; do not
+            // make a pointer drag wait for decorative caption handoff motion.
+            let pane_promotion = self.pane_title_drag.is_some();
+            if pane_promotion {
+                self.caption_dock = frame::CaptionDockMotion::new(false);
+            }
+            let wants_dock = self.vertical_tabs_enabled()
+                && self.left_panel_open
+                && !self.sidebar_tools_open
+                && !pane_promotion
+                && self.sidebar.read(cx).is_pinned();
+            let ready = self.left_panel_motion.current() == 1.0
+                && self.sidebar.read(cx).caption_dock_ready();
+            let caption = self.caption_dock.value(wants_dock, ready, window, cx);
+            self.sidebar.update(cx, |sidebar, _| {
+                sidebar.set_caption_width_hold(caption.hold_sidebar);
+            });
+            caption
+        };
+        #[cfg(target_os = "macos")]
+        let keep_left_panel = caption.hold_sidebar;
+        #[cfg(not(target_os = "macos"))]
+        let keep_left_panel = false;
         self.left_panel_motion
-            .set_target(if self.left_panel_open { 1.0 } else { 0.0 });
+            .set_target(if self.left_panel_open || keep_left_panel {
+                1.0
+            } else {
+                0.0
+            });
         self.agent_panel_motion
             .set_target(if self.agent_panel_open { 1.0 } else { 0.0 });
         let left_panel_progress = self.left_panel_motion.value(window, cx);
@@ -464,6 +514,11 @@ impl Render for ConWorkspace {
         let terminal_content_left = left_panel_width;
         let terminal_content_width =
             (window_width - terminal_content_left - agent_panel_outer_width).max(0.0);
+        #[cfg(target_os = "macos")]
+        let (terminal_content_left, terminal_content_width) = (
+            terminal_content_left + frame::INPUT_ISLAND_INSET,
+            (terminal_content_width - 2.0 * frame::INPUT_ISLAND_INSET).max(0.0),
+        );
         let pane_tree_rendered = {
             let workspace = cx.weak_entity();
             let begin_drag_cb =
@@ -474,14 +529,25 @@ impl Render for ConWorkspace {
                                 return;
                             }
                             let tab_idx = workspace.active_tab;
-                            let start_pos =
-                                match workspace.tabs[tab_idx].pane_tree.split_direction(split_id) {
-                                    Some(SplitDirection::Horizontal) => {
-                                        start_pos
-                                            - workspace.leading_panel_width_for_pane_resize(cx)
-                                    }
-                                    Some(SplitDirection::Vertical) | None => start_pos,
-                                };
+                            let direction =
+                                workspace.tabs[tab_idx].pane_tree.split_direction(split_id);
+                            let offset = match direction {
+                                Some(SplitDirection::Horizontal) => {
+                                    workspace.leading_panel_width_for_pane_resize(cx)
+                                }
+                                _ => 0.0,
+                            };
+                            #[cfg(target_os = "macos")]
+                            let offset = workspace
+                                .pane_content_bounds
+                                .lock()
+                                .ok()
+                                .and_then(|bounds| *bounds)
+                                .map_or(offset, |bounds| match direction {
+                                    Some(SplitDirection::Horizontal) => bounds.left().as_f32(),
+                                    _ => bounds.top().as_f32(),
+                                });
+                            let start_pos = start_pos - offset;
                             workspace.release_active_terminal_mouse_selection(cx);
                             workspace.tabs[tab_idx]
                                 .pane_tree
@@ -570,6 +636,11 @@ impl Render for ConWorkspace {
             .min_h_0()
             .w_full()
             .overflow_hidden()
+            .map(|content| {
+                #[cfg(target_os = "macos")]
+                let content = content.w_auto().m(px(frame::CANVAS_INSET));
+                content
+            })
             .child(pane_tree_rendered)
             .on_children_prepainted(move |bounds_list, _window, _cx| {
                 let Some(bounds) = bounds_list.first().copied() else {
@@ -707,6 +778,16 @@ impl Render for ConWorkspace {
             }
         }
 
+        #[cfg(target_os = "macos")]
+        let pane_content = div()
+            .relative()
+            .flex()
+            .flex_col()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .child(self.canvas_surround.render(top_bar_surface_color))
+            .child(pane_content);
         let mut terminal_area = div()
             .flex()
             .flex_col()
@@ -729,38 +810,72 @@ impl Render for ConWorkspace {
 
         if input_bar_reserved_for_layout {
             let full_input_bar_height = self.input_bar.read(cx).rendered_height(cx).as_f32();
-            let input_bar_height = full_input_bar_height * input_bar_progress;
-            terminal_area = terminal_area.child(
-                div()
-                    .relative()
-                    .overflow_hidden()
-                    .h(px(input_bar_height))
-                    .flex_shrink_0()
-                    .bg(input_bar_surface_color)
-                    .pt(px(1.0))
-                    // Separate output from input without adding another base fill.
-                    .child(
-                        div()
-                            .absolute()
-                            .top_0()
-                            .left_0()
-                            .w_full()
-                            .h(px(1.0))
-                            .bg(chrome_edge_color),
-                    )
-                    .child(
-                        div().h(px((full_input_bar_height - 1.0).max(0.0))).child(
-                            self.input_bar
-                                .clone()
-                                .cached(
-                                    StyleRefinement::default()
-                                        .w_full()
-                                        .h(px(full_input_bar_height - 1.0)),
-                                )
-                                .into_any_element(),
+            #[cfg(not(target_os = "macos"))]
+            {
+                let input_bar_height = full_input_bar_height * input_bar_progress;
+                terminal_area = terminal_area.child(
+                    div()
+                        .relative()
+                        .overflow_hidden()
+                        .h(px(input_bar_height))
+                        .flex_shrink_0()
+                        .bg(input_bar_surface_color)
+                        .pt(px(1.0))
+                        // Separate output from input without adding another base fill.
+                        .child(
+                            div()
+                                .absolute()
+                                .top_0()
+                                .left_0()
+                                .w_full()
+                                .h(px(1.0))
+                                .bg(chrome_edge_color),
+                        )
+                        .child(
+                            div().h(px((full_input_bar_height - 1.0).max(0.0))).child(
+                                self.input_bar
+                                    .clone()
+                                    .cached(
+                                        StyleRefinement::default()
+                                            .w_full()
+                                            .h(px(full_input_bar_height - 1.0)),
+                                    )
+                                    .into_any_element(),
+                            ),
                         ),
-                    ),
-            );
+                );
+            }
+            #[cfg(target_os = "macos")]
+            {
+                let inset = frame::INPUT_ISLAND_INSET;
+                terminal_area = terminal_area.child(
+                    div()
+                        .h(px(
+                            (full_input_bar_height + inset * 2.0) * input_bar_progress
+                        ))
+                        .flex_shrink_0()
+                        .overflow_hidden()
+                        .bg(input_bar_surface_color)
+                        .child(
+                            div()
+                                .m(px(inset))
+                                .h(px(full_input_bar_height))
+                                .rounded(px(11.0))
+                                .bg(theme.foreground.opacity(if theme.is_dark() {
+                                    0.045
+                                } else {
+                                    0.055
+                                }))
+                                .child(
+                                    self.input_bar.clone().cached(
+                                        StyleRefinement::default()
+                                            .w_full()
+                                            .h(px(full_input_bar_height)),
+                                    ),
+                                ),
+                        ),
+                );
+            }
         }
 
         let mut main_area = div().relative().flex().flex_1().min_h_0();
@@ -774,7 +889,12 @@ impl Render for ConWorkspace {
                 .flex_shrink_0()
                 .overflow_hidden()
                 .occlude()
-                .bg(top_bar_surface_color);
+                .bg(top_bar_surface_color)
+                .map(|sidebar| {
+                    #[cfg(target_os = "macos")]
+                    let sidebar = sidebar.pt(px(TOP_BAR_COMPACT_HEIGHT * (1.0 - caption.header)));
+                    sidebar
+                });
             if show_vertical_tabs {
                 left_sidebar = left_sidebar.child(
                     div()
@@ -961,7 +1081,11 @@ impl Render for ConWorkspace {
         let top_bar = self.render_top_bar(
             window,
             cx,
-            top_bar_height,
+            if cfg!(target_os = "macos") {
+                TOP_BAR_COMPACT_HEIGHT
+            } else {
+                top_bar_height
+            },
             tab_strip_progress,
             top_bar_surface_color,
         );
@@ -1286,8 +1410,20 @@ impl Render for ConWorkspace {
                     window.prevent_default();
                     cx.stop_propagation();
                 }
-            }))
-            .child(top_bar);
+            }));
+        #[cfg(not(target_os = "macos"))]
+        {
+            root = root.child(top_bar);
+        }
+        #[cfg(target_os = "macos")]
+        {
+            root = root.child(
+                div()
+                    .h(px(top_bar_height))
+                    .flex_shrink_0()
+                    .bg(top_bar_surface_color),
+            );
+        }
         if show_compact_top_bar_separator {
             root = root.child(
                 div()
@@ -1297,6 +1433,20 @@ impl Render for ConWorkspace {
             );
         }
         root = root.child(main_area);
+        #[cfg(target_os = "macos")]
+        {
+            let caption_width =
+                window_width + (full_left_panel_width - window_width) * caption.dock;
+            root = root.child(
+                div()
+                    .absolute()
+                    .top_0()
+                    .left_0()
+                    .w(px(caption_width))
+                    .h(px(TOP_BAR_COMPACT_HEIGHT))
+                    .child(top_bar),
+            );
+        }
 
         // Vertical-tab rail hover card — composed here as a root overlay
         // (window coordinates) so it paints above the terminal and is not

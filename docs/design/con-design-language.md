@@ -99,8 +99,11 @@ con is light-first (Flexoki Light default) but must excel in both themes.
 - Apply the same rule throughout sidebar navigation, file trees and search,
   including disclosure arrows, secondary paths and result line numbers.
 - The titlebar, left sidebar, agent sidebar, and bottom input bar share one
-  translucent chrome material. Keep outer panels square and flush to the
-  window; rounding belongs to controls and content within them. Use the same
+  translucent chrome material. On macOS, an inset terminal canvas and a
+  separately reserved input island provide depth without borders or shadows;
+  expanded vertical navigation takes ownership of the caption controls. See
+  `docs/design/workspace-depth.md` for geometry and native clipping. Other
+  platforms keep their flush panel layout. Use the same
   quiet foreground-derived fill for their terminal-facing 1px edges, with no
   rule beneath the macOS titlebar. Decorative edges must remain separate from
   native presentation synchronization and transient seam covers. Window Chrome

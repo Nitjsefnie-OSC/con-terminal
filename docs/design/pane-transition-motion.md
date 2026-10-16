@@ -64,11 +64,11 @@ existing macOS synchronization contract and its platform scope.
 
 ### Visual Hierarchy
 
-Keep the terminal body flush to its pane. Do not introduce a card, rounded
-terminal viewport, shadow, or additional inset: these would reduce usable space
-and change selection, image and native-layer clipping. The native-app quality
-comes from coherent motion and carefully aligned chrome, not a new frame around
-terminal text.
+Keep the terminal body flush to its pane. The later macOS
+[workspace canvas](workspace-depth.md) introduces one inset and rounded outer
+boundary for the whole pane tree, not a separate card around each split.
+Its native clipping must preserve selection and images. It does not authorize
+terminal-body animation or stretched retained frames.
 
 The split-pane header remains 24 points high. Its title is centered independently
 of the controls, with equal reserved space on both sides. Solid system-font ink

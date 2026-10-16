@@ -100,6 +100,11 @@ If a cached view causes overlap, clipping, or stale layout, the cache boundary i
 - Keep terminal surfaces and heavy side panels isolated.
 - Avoid reading terminal runtime state during ordinary render unless already cached.
 - Be cautious with transparency, animation, and resize interactions; measure before adding visual layers.
+- Check GPU composition bounds as well as CPU caches. In the pinned Metal
+  renderer, paths are copied from an intermediate texture over their bounds.
+  A viewport-sized path with a hole can still require a large blit. For canvas
+  gutters, use narrow quads and separately cached, corner-sized paths; test that
+  they never paint over terminal pixels and keep their bounds small.
 - For hover affordances that only need cursor feedback, prefer a tiny overlay /
   hitbox and `cursor_pointer()` over repainting terminal text. Keep the overlay
   state bounded to the hovered link/range.

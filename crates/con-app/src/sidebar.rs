@@ -282,6 +282,8 @@ pub struct SessionSidebar {
     leading_top_pad: f32,
     /// Smooth width animation between rail (0.0) and pinned (1.0).
     width_motion: SidebarMotion,
+    #[cfg(target_os = "macos")]
+    caption_width_hold: bool,
     /// User-resized width of the pinned panel. Collapsed mode ignores
     /// this and stays at the fixed rail width.
     panel_width: f32,
@@ -406,6 +408,8 @@ impl SessionSidebar {
             // tab-sidebar controls.
             leading_top_pad: 6.0,
             width_motion: SidebarMotion::new(0.0),
+            #[cfg(target_os = "macos")]
+            caption_width_hold: false,
             panel_width: PANEL_WIDTH,
             effective_panel_max_width: PANEL_MAX_WIDTH,
             rename: None,
@@ -469,6 +473,8 @@ impl SessionSidebar {
             self.cancel_rename(cx);
             self.hovered_rail = None;
             let target = if pinned { 1.0 } else { 0.0 };
+            #[cfg(target_os = "macos")]
+            let target = if self.caption_width_hold { 1.0 } else { target };
             self.width_motion.set_target(target);
             cx.notify();
         } else if had_rail_only_override {
@@ -492,8 +498,25 @@ impl SessionSidebar {
     }
 
     pub fn advance_width_motion(&mut self, window: &mut Window, cx: &App) -> bool {
+        #[cfg(target_os = "macos")]
+        self.width_motion
+            .set_target(if self.is_pinned() || self.caption_width_hold {
+                1.0
+            } else {
+                0.0
+            });
         self.width_motion.value(window, cx);
         self.width_motion.is_animating()
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn set_caption_width_hold(&mut self, hold: bool) {
+        self.caption_width_hold = hold;
+    }
+
+    #[cfg(target_os = "macos")]
+    pub fn caption_dock_ready(&self) -> bool {
+        self.is_pinned() && !self.width_motion.is_animating()
     }
 
     pub fn set_tools_panel_open(&mut self, open: bool, active_slot: ActivitySlot) {

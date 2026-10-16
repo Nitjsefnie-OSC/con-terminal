@@ -1644,7 +1644,11 @@ impl ConWorkspace {
             .items_end()
             .pl(px(leading_pad))
             .pr(px(trailing_pad))
-            .bg(top_bar_surface_color);
+            .bg(if cfg!(target_os = "macos") {
+                theme.transparent
+            } else {
+                top_bar_surface_color
+            });
 
         #[cfg(target_os = "macos")]
         {
@@ -1739,9 +1743,20 @@ impl ConWorkspace {
 
         // Also show the tab strip during pane-to-tab drag so the ghost tab
         // preview is visible even when there is currently only one tab.
-        let show_horizontal_tabs = self.horizontal_tabs_visible()
-            || pane_title_drag_to_tab_active
-            || pane_origin_drag_active;
+        let caption_docked = {
+            #[cfg(target_os = "macos")]
+            {
+                self.caption_dock.current().dock > 0.0
+            }
+            #[cfg(not(target_os = "macos"))]
+            {
+                false
+            }
+        };
+        let show_horizontal_tabs = !caption_docked
+            && (self.horizontal_tabs_visible()
+                || pane_title_drag_to_tab_active
+                || pane_origin_drag_active);
         let tab_count = self.tabs.len();
         let motion_now = std::time::Instant::now();
         let animate_slots = self.config.appearance.tabs_orientation == TabsOrientation::Horizontal
@@ -2606,7 +2621,7 @@ impl ConWorkspace {
         // Show the tab strip when animating/visible OR when a pane is being
         // dragged to become a new tab (so the ghost tab preview is visible
         // even when there is currently only one tab).
-        if tab_strip_progress > 0.01 || pane_title_drag_to_tab_active {
+        if !caption_docked && (tab_strip_progress > 0.01 || pane_title_drag_to_tab_active) {
             let opacity = if pane_title_drag_to_tab_active && tab_strip_progress < 0.01 {
                 1.0
             } else {
@@ -2722,38 +2737,42 @@ impl ConWorkspace {
                 })),
             );
         }
-        tab_controls = tab_controls.child(
-            chrome_button(
-                "tab-new",
-                "phosphor/plus.svg",
-                None,
-                "New tab",
-                Some(Box::new(NewTab)),
-                cx,
-            )
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.new_tab(&NewTab, window, cx);
-            })),
-        );
+        if !caption_docked {
+            tab_controls = tab_controls.child(
+                chrome_button(
+                    "tab-new",
+                    "phosphor/plus.svg",
+                    None,
+                    "New tab",
+                    Some(Box::new(NewTab)),
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.new_tab(&NewTab, window, cx);
+                })),
+            );
+        }
 
         let left_sidebar_tooltip = if self.left_panel_open {
             "Hide left sidebar"
         } else {
             "Show left sidebar"
         };
-        tab_controls = tab_controls.child(
-            chrome_button(
-                "toggle-left-sidebar",
-                "phosphor/sidebar.svg",
-                Some(self.left_panel_open),
-                left_sidebar_tooltip,
-                Some(Box::new(ToggleLeftPanel)),
-                cx,
-            )
-            .on_click(cx.listener(|this, _, window, cx| {
-                this.toggle_left_panel(&ToggleLeftPanel, window, cx);
-            })),
-        );
+        if !caption_docked {
+            tab_controls = tab_controls.child(
+                chrome_button(
+                    "toggle-left-sidebar",
+                    "phosphor/sidebar.svg",
+                    Some(self.left_panel_open),
+                    left_sidebar_tooltip,
+                    Some(Box::new(ToggleLeftPanel)),
+                    cx,
+                )
+                .on_click(cx.listener(|this, _, window, cx| {
+                    this.toggle_left_panel(&ToggleLeftPanel, window, cx);
+                })),
+            );
+        }
 
         // Input bar toggle
         let input_bar_tooltip = if self.input_bar_visible {

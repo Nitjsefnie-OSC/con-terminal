@@ -112,6 +112,8 @@ struct NativeBackingSync {
 
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
+    fn con_terminal_canvas_generation(view: *mut c_void) -> u64;
+    fn con_terminal_canvas_apply_clip(view: *mut c_void);
     fn objc_getAssociatedObject(object: id, key: *const c_void) -> id;
     fn objc_setAssociatedObject(object: id, key: *const c_void, value: id, policy: usize);
     fn con_ghostty_surface_install_backing_observer(view: *mut c_void, surface: *mut c_void);
@@ -359,6 +361,8 @@ pub struct GhosttyView {
     #[cfg(target_os = "macos")]
     pending_native_layout: bool,
     #[cfg(target_os = "macos")]
+    native_canvas_generation: u64,
+    #[cfg(target_os = "macos")]
     mouse_cursor: CursorStyle,
     #[cfg(target_os = "macos")]
     pending_mouse_visible: Cell<Option<bool>>,
@@ -457,6 +461,8 @@ impl GhosttyView {
             native_underlay_color: None,
             #[cfg(target_os = "macos")]
             pending_native_layout: false,
+            #[cfg(target_os = "macos")]
+            native_canvas_generation: 0,
             #[cfg(target_os = "macos")]
             mouse_cursor: CursorStyle::IBeam,
             #[cfg(target_os = "macos")]
@@ -1804,6 +1810,9 @@ impl GhosttyView {
     #[cfg(target_os = "macos")]
     fn update_frame(&mut self, bounds: Bounds<Pixels>, window: &Window) {
         let bounds = crate::terminal_geometry::snap_terminal_bounds(bounds, window.scale_factor());
+        let canvas_generation = self.host_view.map_or(0, |host| unsafe {
+            con_terminal_canvas_generation(host as *mut c_void)
+        });
         // `last_bounds` is Con's layout cache, not Ghostty's protocol state.
         // Pane-local surfaces can be hidden, focused, and resized without
         // repainting every sibling; always verify the embedded surface still
@@ -1811,6 +1820,7 @@ impl GhosttyView {
         if self.last_bounds.as_ref() == Some(&bounds)
             && !self.awaiting_first_layout_visibility
             && !self.pending_native_layout
+            && self.native_canvas_generation == canvas_generation
             && self.terminal_matches_bounds(bounds)
             && self.cached_scale_matches_native(window)
         {
@@ -1818,6 +1828,7 @@ impl GhosttyView {
         }
         let started = perf_trace_enabled().then(Instant::now);
         self.last_bounds = Some(bounds);
+        self.native_canvas_generation = canvas_generation;
         window.request_native_surface_presentation_sync();
         self.sync_native_backing_background();
 
@@ -1856,6 +1867,12 @@ impl GhosttyView {
         }
 
         self.sync_native_scroll_view();
+        if let Some(host) = self.host_view {
+            unsafe { con_terminal_canvas_apply_clip(host as *mut c_void) };
+        }
+        if let Some(underlay) = self.native_underlay_view {
+            unsafe { con_terminal_canvas_apply_clip(underlay as *mut c_void) };
+        }
 
         if let Some(started) = started {
             let in_live_resize = if let Some(host_view) = self.host_view {

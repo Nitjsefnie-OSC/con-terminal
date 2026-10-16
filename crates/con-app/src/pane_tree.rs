@@ -2363,6 +2363,11 @@ impl PaneTree {
         // The whole title bar is draggable. The visible pane drag preview is
         // rendered by Workspace, centred at the live cursor position.
         let bar_bg = Self::pane_chrome_bg(theme, is_focused, tab_accent_inactive_alpha);
+        let bar_bg = if is_focused {
+            bar_bg.blend(theme.foreground.opacity(0.025))
+        } else {
+            bar_bg
+        };
         let bar = div()
             .id(ElementId::Name(format!("pane-title-bar-{pane_id}").into()))
             .debug_selector(move || format!("pane-title-bar-{pane_id}"))
@@ -2373,10 +2378,15 @@ impl PaneTree {
             .items_center()
             .h(px(24.0))
             .w_full()
-            .bg(if is_focused {
-                bar_bg.blend(theme.foreground.opacity(0.025))
-            } else {
-                bar_bg
+            .map(|bar| {
+                #[cfg(target_os = "macos")]
+                {
+                    bar.child(crate::workspace::frame::header_background(bar_bg))
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    bar.bg(bar_bg)
+                }
             })
             .cursor_grab()
             .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
@@ -2443,11 +2453,18 @@ impl PaneTree {
             .flex_shrink_0()
             .gap(px(2.0))
             .px(px(6.0))
-            .bg(Self::pane_chrome_bg(
-                theme,
-                is_focused,
-                tab_accent_inactive_alpha,
-            ))
+            .map(|bar| {
+                let color = Self::pane_chrome_bg(theme, is_focused, tab_accent_inactive_alpha);
+                #[cfg(target_os = "macos")]
+                {
+                    bar.relative()
+                        .child(crate::workspace::frame::header_background(color))
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    bar.bg(color)
+                }
+            })
             .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
                 focus_cb_bar(pane_id, window, cx);
             });
@@ -3103,7 +3120,17 @@ impl PaneTree {
                 .w_full()
                 .px(px(6.0))
                 .py(px(2.0))
-                .bg(strip_bg)
+                .map(|bar| {
+                    #[cfg(target_os = "macos")]
+                    {
+                        bar.relative()
+                            .child(crate::workspace::frame::header_background(strip_bg))
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        bar.bg(strip_bg)
+                    }
+                })
                 .child(surface_rail);
 
             col = col.child(strip);

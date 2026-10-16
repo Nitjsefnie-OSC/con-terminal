@@ -131,6 +131,8 @@ mod control_agent_tools;
 mod control_requests;
 mod control_surfaces;
 mod editor_actions;
+#[cfg(target_os = "macos")]
+pub(crate) mod frame;
 mod helpers;
 mod input_events;
 mod lifecycle;
@@ -207,6 +209,10 @@ pub struct ConWorkspace {
     agent_panel_open: bool,
     agent_panel_motion: SidebarMotion,
     left_panel_motion: SidebarMotion,
+    #[cfg(target_os = "macos")]
+    caption_dock: frame::CaptionDockMotion,
+    #[cfg(target_os = "macos")]
+    canvas_surround: frame::CanvasSurround,
     agent_panel_width: f32,
     tab_strip_motion: MotionValue,
     tab_slot_motion: tab_motion::TabSlotMotion,

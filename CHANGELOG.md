@@ -4,6 +4,16 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.139`
+
+### Changed
+
+**macOS**
+
+- The terminal sits in a subtly rounded canvas, with the input bar in its own
+  inset space below. Expanded vertical tabs bring window controls into the
+  sidebar, leaving more height for terminal content.
+
 ## `v0.1.0-beta.138` - 2026-10-16
 
 ### Changed
