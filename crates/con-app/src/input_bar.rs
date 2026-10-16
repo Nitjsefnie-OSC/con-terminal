@@ -1234,7 +1234,7 @@ impl Render for InputBar {
         let input_cursor = input_state.read(cx).cursor();
         let mono_scale = mono_density_scale(theme);
         let control_size = mono_space_px(theme, crate::input_chrome::CONTROL_SIZE);
-        let mode_icon_size = mono_space_px(theme, 22.0);
+        let mode_icon_size = mono_space_px(theme, 20.0);
         let compact_icon_size = mono_space_px(theme, 14.0);
 
         // ── Mode prefix — icon-only, minimal ──
@@ -1272,11 +1272,9 @@ impl Render for InputBar {
             let (scope_label, scope_icon) = self.pane_scope_summary();
             let scope_is_expanded =
                 all_selected || matches!(self.pane_scope_mode, PaneScopeMode::Custom);
-            let scope_tint = if scope_is_expanded {
-                theme.primary
-            } else {
-                theme.muted_foreground
-            };
+            let scope_tint = theme
+                .foreground
+                .opacity(if scope_is_expanded { 0.72 } else { 0.52 });
             Some(
                 div()
                     .flex()
@@ -1285,7 +1283,7 @@ impl Render for InputBar {
                         Button::new("pane-scope")
                             .custom(
                                 ButtonCustomVariant::new(cx)
-                                    .color(theme.foreground.opacity(0.045))
+                                    .color(theme.foreground.opacity(0.035))
                                     .hover(theme.foreground.opacity(0.09))
                                     .active(theme.foreground.opacity(0.14)),
                             )
@@ -1301,12 +1299,12 @@ impl Render for InputBar {
                             .w(px(96.0 * mono_scale))
                             .h(control_size)
                             .px(px(9.0 * mono_scale))
-                            .rounded(px(6.0 * mono_scale))
+                            .rounded(px(14.0 * mono_scale))
                             .cursor_pointer()
                             .flex()
                             .items_center()
                             .gap(px(6.0 * mono_scale))
-                            .bg(theme.foreground.opacity(0.045))
+                            .bg(theme.foreground.opacity(0.035))
                             .on_click(cx.listener(|this, _, window, cx| {
                                 cx.emit(TogglePaneScopePicker);
                                 this.current_input_state()

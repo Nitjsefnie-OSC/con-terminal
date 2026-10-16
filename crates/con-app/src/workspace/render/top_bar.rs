@@ -1718,15 +1718,14 @@ impl ConWorkspace {
         // Tabs container — appears only when there is real tab selection to do.
         // Clear stale tab reorder indicators only when neither GPUI tab drag nor
         // pane-origin GPUI drag is active.
-        let pane_title_drag_to_tab_active =
-            pane_title_drag_to_tab_active(self.pane_title_drag.as_ref());
+        let pane_title_drag_to_tab_active = pane_drag_needs_horizontal_tabs(
+            cfg!(target_os = "macos") && self.vertical_tabs_enabled(),
+            pane_title_drag_to_tab_active(self.pane_title_drag.as_ref()),
+        );
         // Pane-origin drags keep `pane_title_drag` alive from their
         // drag-move handlers. Use that explicit state to keep the tab strip
         // visible instead of inferring pane drags from `cx.has_active_drag()`.
-        let pane_origin_drag_active = self
-            .pane_title_drag
-            .as_ref()
-            .is_some_and(|drag| drag.active);
+        let pane_origin_drag_active = pane_title_drag_to_tab_active;
         let tab_strip_preview_active =
             is_tab_strip_preview_active(cx.has_active_drag(), pane_title_drag_to_tab_active)
                 || pane_origin_drag_active;

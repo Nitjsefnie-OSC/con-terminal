@@ -5,7 +5,7 @@ use std::rc::Rc;
 pub(super) const CANVAS_INSET: f32 = 2.0;
 pub(super) const CANVAS_RADIUS: f32 = 8.0;
 pub(super) const INPUT_ISLAND_INSET: f32 = 10.0;
-const INPUT_ISLAND_MAX_WIDTH: f32 = 960.0;
+const INPUT_ISLAND_MAX_WIDTH: f32 = 800.0;
 
 /// The island and its popovers share one horizontal geometry, including on
 /// wide windows where the composer stops growing but the terminal does not.
@@ -398,8 +398,8 @@ mod tests {
                 }
             }
         }
-        assert_eq!(input_island_geometry(1600.0, 1.0), (320.0, 960.0));
-        assert_eq!(input_island_geometry(900.0, 1.0), (12.0, 876.0));
+        assert_eq!(input_island_geometry(1600.0, 1.0), (400.0, 800.0));
+        assert_eq!(input_island_geometry(900.0, 1.0), (50.0, 800.0));
         assert_eq!(input_safe_height(44.0, 1.0, 1.0), 64.0);
         assert_eq!(input_safe_height(44.0, 0.0, 1.0), 0.0);
     }

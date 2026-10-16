@@ -22,6 +22,9 @@ con is still pre-release, so entries may group related beta work while the produ
 - The floating input bar reveals its background and controls together, without
   first opening a separate empty strip. Pane clipping also recovers when native
   backing layers change without a layout-size change.
+- Dragging a pane keeps vertical tabs in the sidebar instead of briefly opening
+  a horizontal strip. Pane drag labels, tab details and the floating command
+  bar use a more compact, consistent layout.
 
 ## `v0.1.0-beta.138` - 2026-10-16
 

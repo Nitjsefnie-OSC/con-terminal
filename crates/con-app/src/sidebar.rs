@@ -40,11 +40,9 @@ pub const RAIL_WIDTH: f32 = 44.0;
 pub const PANEL_WIDTH: f32 = 240.0;
 pub const PANEL_MIN_WIDTH: f32 = 184.0;
 pub const PANEL_MAX_WIDTH: f32 = 360.0;
-/// Width of the floating hover card shown when the cursor is over a
-/// rail icon. Slightly wider than the panel so two-line rows are
-/// comfortable at this magnification.
+/// Compact details next to a rail tile; long paths wrap within this width.
 #[allow(dead_code)]
-const HOVER_CARD_WIDTH: f32 = 240.0;
+const HOVER_CARD_WIDTH: f32 = 216.0;
 /// Single-line tabs keep the expanded navigator as light as the compact rail.
 const ROW_HEIGHT: f32 = 32.0;
 const ROW_SELECTION_INSET: f32 = 3.0;
@@ -1278,18 +1276,41 @@ impl SessionSidebar {
             .flex()
             .flex_col()
             .px(px(12.0))
-            .py(px(12.0))
+            .py(px(10.0))
             .font_family(sys_font)
             .child(
                 div()
-                    .debug_selector(|| "tab-hover-name".into())
-                    .flex_shrink_0()
-                    .text_size(ui_px(theme, 13.0))
-                    .line_height(ui_px(theme, 18.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(name_color)
-                    .truncate()
-                    .child(session.name.clone()),
+                    .debug_selector(|| "tab-hover-heading".into())
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(crate::assets::tab_identity_icon(
+                        session.icon,
+                        ui_px(theme, 14.0),
+                        theme.foreground,
+                    ))
+                    .child(
+                        div()
+                            .debug_selector(|| "tab-hover-name".into())
+                            .flex_1()
+                            .min_w_0()
+                            .text_size(ui_px(theme, 13.0))
+                            .line_height(ui_px(theme, 18.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(name_color)
+                            .truncate()
+                            .child(session.name.clone()),
+                    )
+                    .when(session.pane_count > 1, |row| {
+                        row.child(
+                            div()
+                                .debug_selector(|| "tab-hover-pane-count".into())
+                                .flex_shrink_0()
+                                .text_size(ui_px(theme, 10.0))
+                                .text_color(meta_color)
+                                .child(format!("{} panes", session.pane_count)),
+                        )
+                    }),
             );
 
         if let Some(sub) = session.subtitle.as_ref() {
@@ -1297,7 +1318,7 @@ impl SessionSidebar {
                 div()
                     .debug_selector(|| "tab-hover-path".into())
                     .flex_shrink_0()
-                    .mt(px(4.0))
+                    .mt(px(6.0))
                     .text_size(ui_px(theme, 11.0))
                     .line_height(ui_px(theme, 16.0))
                     .text_color(sub_color)
@@ -1360,17 +1381,14 @@ impl SessionSidebar {
             .line_height(ui_px(theme, 14.0))
             .text_color(meta_color);
 
-        let pane_label = match session.pane_count {
-            0 | 1 => "1 pane".to_string(),
-            n => format!("{n} panes"),
-        };
-        meta = meta.child(div().child(pane_label));
         if session.is_ssh {
-            meta = meta.child(div().child("·").text_color(meta_color));
             meta = meta.child(div().child("SSH"));
         }
         if session.needs_attention {
-            meta = meta.child(div().child("·").text_color(meta_color)).child(
+            if session.is_ssh {
+                meta = meta.child(div().child("·").text_color(meta_color));
+            }
+            meta = meta.child(
                 div()
                     .flex()
                     .items_center()
@@ -1379,11 +1397,7 @@ impl SessionSidebar {
                     .child(div().child("unread")),
             );
         }
-        if session.pane_count > 1
-            || session.is_ssh
-            || session.needs_attention
-            || session.status_detail.is_some()
-        {
+        if session.is_ssh || session.needs_attention {
             card_inner = card_inner.child(meta);
         }
 
@@ -1393,7 +1407,7 @@ impl SessionSidebar {
             .w(px(HOVER_CARD_WIDTH.min(
                 (window.viewport_size().width.as_f32() - RAIL_WIDTH - 14.0).max(1.0),
             )))
-            .rounded(px(10.0))
+            .rounded(px(8.0))
             .overflow_hidden()
             .bg(bg)
             .occlude()
@@ -2759,14 +2773,17 @@ mod tests {
             }))
         });
         let card = cx.debug_bounds("tab-hover-card").expect("hover card");
+        let heading = cx.debug_bounds("tab-hover-heading").expect("heading");
         let name = cx.debug_bounds("tab-hover-name").expect("name");
+        let count = cx.debug_bounds("tab-hover-pane-count").expect("pane count");
         let path = cx.debug_bounds("tab-hover-path").expect("path");
         let status = cx.debug_bounds("tab-hover-status").expect("status");
         let meta = cx.debug_bounds("tab-hover-meta").expect("metadata");
-        assert_eq!(name.left() - card.left(), px(12.0));
-        assert_eq!(card.right() - name.right(), px(12.0));
-        assert_eq!(name.top() - card.top(), px(12.0));
-        assert_eq!(card.bottom() - meta.bottom(), px(12.0));
+        assert_eq!(heading.left() - card.left(), px(12.0));
+        assert_eq!(card.right() - heading.right(), px(12.0));
+        assert_eq!(heading.top() - card.top(), px(10.0));
+        assert_eq!(card.bottom() - meta.bottom(), px(10.0));
+        assert!(name.right() <= count.left());
         assert!(name.bottom() <= path.top());
         assert!(path.bottom() <= status.top());
         assert!(status.bottom() <= meta.top());
@@ -2805,9 +2822,8 @@ mod tests {
                 let status = cx.debug_bounds("tab-hover-status").expect("status label");
                 assert!((status.size.height.as_f32() - expected_height).abs() < 0.5);
                 let path = cx.debug_bounds("tab-hover-path").expect("path");
-                let meta = cx.debug_bounds("tab-hover-meta").expect("metadata");
                 assert!(path.bottom() <= status.top());
-                assert!(status.bottom() <= meta.top());
+                assert!(cx.debug_bounds("tab-hover-meta").is_none());
                 heights.push(status.size.height.as_f32());
             }
             assert!(heights[0] < heights[1] && heights[1] < heights[2]);

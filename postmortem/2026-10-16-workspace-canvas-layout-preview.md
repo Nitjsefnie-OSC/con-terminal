@@ -27,7 +27,7 @@ This is an unreleased prototype, not a production incident.
 ## Changes
 
 The canvas now owns the terminal and its bottom safe area. The composer is a
-centered overlay within that safe area, capped at 960pt, with terminal rows
+centered overlay within that safe area, capped at 800pt, with terminal rows
 reserved so output cannot hide underneath. Its popovers share its horizontal
 geometry. A cached passive native material view supplies only the safe-area
 background; it neither receives input nor covers terminal output. Native
@@ -107,6 +107,24 @@ changes until Finder activated the already-running bundle. Distinguish that
 frame-delivery state from a failed GPU submission or the reporter's drag case.
 The final preview is activated, but prolonged dragging, dark-theme desktop
 inspection and the internal-display/battery scenario still need acceptance.
+
+A subsequent report showed a gray terminal region after a pane was dragged to
+the temporary horizontal strip in vertical-tab mode. Code inspection confirmed
+that pane drags unnecessarily exposed a second tab destination and undocked
+the caption. Vertical mode now keeps its existing sidebar destination and
+caption geometry. Pane reorder and promotion explicitly invalidate native
+layout for reused surfaces. These close identifiable layout-ownership gaps;
+they do not by themselves prove the complete reported gray-region failure is
+resolved. Automated title drags on this machine have not performed a reorder,
+so the next preview still needs that manual acceptance.
+
+This follow-up passed 118 focused macOS tests, formatting, strict Clippy and an
+app/CLI build. The restarted preview was activated through Finder and inspected
+with three panes, the narrower command island and the compact-tab hover card.
+The original two tabs were retained; the disposable test tab was removed.
+Windows/Linux native layout paths and upstream dependencies are unchanged, but
+their runtime rendering was not tested. Shared hover/composer styling is part
+of this visual change; do not describe those styles as macOS-only.
 
 ## Lessons
 

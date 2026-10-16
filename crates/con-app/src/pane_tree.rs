@@ -2240,7 +2240,7 @@ impl PaneTree {
                 .blend(
                     theme
                         .foreground
-                        .opacity(if _is_focused { 0.025 } else { 0.012 }),
+                        .opacity(if _is_focused { 0.012 } else { 0.004 }),
                 )
                 .opacity(1.0)
         }
@@ -2393,7 +2393,7 @@ impl PaneTree {
         // The whole title bar is draggable. The visible pane drag preview is
         // rendered by Workspace, centred at the live cursor position.
         let bar_bg = Self::pane_chrome_bg(theme, is_focused, tab_accent_inactive_alpha);
-        let bar_bg = if is_focused {
+        let bar_bg = if is_focused && !cfg!(target_os = "macos") {
             bar_bg.blend(theme.foreground.opacity(0.025))
         } else {
             bar_bg

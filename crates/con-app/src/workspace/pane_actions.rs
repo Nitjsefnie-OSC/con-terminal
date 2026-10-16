@@ -810,6 +810,11 @@ impl ConWorkspace {
             },
         );
 
+        // These are existing native surfaces, not fresh terminals. Their old
+        // split geometry must not qualify for the incoming tab's layout cache.
+        #[cfg(target_os = "macos")]
+        self.mark_tab_terminal_native_layout_pending(new_index, cx);
+
         if self.sync_tab_strip_motion()
             && Self::should_defer_top_chrome_refresh_when_tab_strip_appears()
         {

@@ -12,13 +12,15 @@ in the same pane-local scope.
 
 The agent panel uses the same 2pt inset and 8pt outer rounding. Its header,
 conversation and composer belong to one clipped surface, not separate frames.
-Compact-tab details use a stable tile anchor and one opaque, rounded material;
-they must remain readable over native terminal content. Omit a redundant
-single-pane footer when there is no other status to convey.
+Compact-tab details use a stable tile anchor and one opaque, rounded material.
+The title and identity icon share one row, with the pane count at its trailing
+edge; the path follows below. Keep 12pt horizontal and 10pt vertical padding.
+SSH and unread state use a separate footer only when present. Long paths wrap
+and the card scrolls rather than silently dropping pane details.
 
 The input bar floats on the continuous terminal canvas, rather than sitting in
-a separate chrome strip. A 10pt safe-area inset and 11pt corner radius distinguish
-the composer; its width stops at 960pt and remains centered on wider canvases.
+a separate chrome strip. A 10pt safe-area inset and 14pt corner radius distinguish
+the composer; its width stops at 800pt and remains centered on wider canvases.
 Its popovers use the same horizontal geometry. Once revealed, the terminal
 viewport reserves the composer's height and safe area so the final row and
 selections remain visible. Only this reserved area receives a terminal-colored native
@@ -64,6 +66,15 @@ spring samples, with no independent caption spring. Restore the full caption
 row by the point where the sidebar can no longer contain it; never interpolate the toolbar across native
 terminal content. Compact controls use 24pt targets and a tighter shared gap
 budget, without changing session tile or row hit targets.
+
+Pane promotion follows the current tab orientation on macOS. Vertical tabs
+accept panes in the sidebar; dragging does not temporarily create horizontal
+tabs or undock the caption. Horizontal mode retains its existing strip drop
+destination. Moving a pane or promoting its existing terminal into a tab marks
+native layout pending before the next frame; a reused terminal is not a newly
+created surface. The floating drag label uses the same 8pt rounding and UI
+typography as the canvas, with a quiet terminal icon and an opaque fill so it
+stays legible above native content.
 
 ## Ownership and presentation
 

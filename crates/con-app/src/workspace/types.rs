@@ -17,6 +17,13 @@ pub(super) fn pane_title_drag_to_tab_active(drag: Option<&PaneTitleDragState>) -
     drag.is_some_and(|drag| drag.active)
 }
 
+/// A pane uses the tab destination already visible in this window. In vertical
+/// mode the sidebar owns promotion; creating a second strip changes native
+/// terminal geometry in the middle of the drag.
+pub(super) fn pane_drag_needs_horizontal_tabs(vertical_tabs: bool, active: bool) -> bool {
+    active && !vertical_tabs
+}
+
 /// Workspace-owned drag preview state for horizontal tab-strip drags.
 /// GPUI's built-in active-drag preview does not reliably honor relative
 /// `.top/.left` constraints, so horizontal tab drags hide that preview and

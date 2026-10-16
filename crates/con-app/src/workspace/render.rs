@@ -353,9 +353,7 @@ impl Render for ConWorkspace {
         let caption = {
             let minimum = frame::caption_minimum_width(top_bar::top_bar_leading_pad(window));
             let sidebar = self.sidebar.read(cx);
-            let eligible = self.vertical_tabs_enabled()
-                && !self.sidebar_tools_open
-                && self.pane_title_drag.is_none();
+            let eligible = self.vertical_tabs_enabled() && !self.sidebar_tools_open;
             // A rail-only override preserves the expanded preference. It must
             // not preserve the expanded caption geometry as well.
             self.caption_dock = frame::CaptionLayout::new(if eligible {
@@ -728,12 +726,18 @@ impl Render for ConWorkspace {
                     && let Some(PaneDropTarget::Split(target)) = drag.target
                 {
                     this.tab_strip_drop_slot = None;
-                    this.tabs[this.active_tab].pane_tree.move_pane(
+                    let moved = this.tabs[this.active_tab].pane_tree.move_pane(
                         pane_id,
                         target.target_pane_id,
                         target.direction,
                         target.placement,
                     );
+                    #[cfg(target_os = "macos")]
+                    if moved {
+                        this.mark_active_tab_terminal_native_layout_pending(cx);
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    let _ = moved;
                     this.sync_sidebar(cx);
                     cx.notify();
                 }
@@ -923,7 +927,7 @@ impl Render for ConWorkspace {
                                     .max(0.0)))
                                 .w(px(island_width))
                                 .h(px(full_input_bar_height))
-                                .rounded(px(11.0 * canvas_depth))
+                                .rounded(px(14.0 * canvas_depth))
                                 .bg(island)
                                 .child(input),
                         ),
@@ -1597,8 +1601,8 @@ impl Render for ConWorkspace {
 
         if let Some(drag) = self.pane_title_drag.as_ref().filter(|drag| drag.active) {
             let preview_size = Size {
-                width: px(120.0),
-                height: px(28.0),
+                width: px(160.0),
+                height: px(32.0),
             };
             let preview_origin = if let Some(PaneDropTarget::NewTab { .. }) = drag.target {
                 tab_drag_preview_origin(
@@ -1617,16 +1621,37 @@ impl Render for ConWorkspace {
                     .top(preview_origin.y)
                     .w(preview_size.width)
                     .h(preview_size.height)
-                    .px(px(10.0))
-                    .rounded(px(4.0))
+                    .px(px(12.0))
+                    .rounded(px(8.0))
                     .flex()
                     .items_center()
+                    .gap(px(8.0))
                     .cursor_grab()
-                    .bg(theme.title_bar.opacity(0.92))
+                    .bg(theme
+                        .background
+                        .blend(
+                            theme
+                                .foreground
+                                .opacity(if theme.is_dark() { 0.10 } else { 0.045 }),
+                        )
+                        .opacity(1.0))
                     .font_family(theme.font_family.clone())
                     .text_size(px(12.0))
-                    .text_color(theme.foreground.opacity(0.82))
-                    .child(div().truncate().child(drag.title.clone())),
+                    .text_color(theme.foreground)
+                    .child(
+                        svg()
+                            .path("phosphor/terminal.svg")
+                            .size(px(13.0))
+                            .flex_shrink_0()
+                            .text_color(theme.muted_foreground),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .truncate()
+                            .child(drag.title.clone()),
+                    ),
             );
         }
 

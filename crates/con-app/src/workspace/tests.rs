@@ -11,7 +11,7 @@ use super::{
     ConWorkspace, SPLIT_PREVIEW_SEAM_THICKNESS, SplitDirection, SplitPlacement,
     TabRenameStateSnapshot, centered_drag_preview_origin, clamp_preview_origin_to_tab_bar,
     clear_pane_tab_promotion_drag_state, is_dragged_tab_source, is_tab_strip_preview_active,
-    normalize_tab_user_label, pane_drag_floating_preview_origin,
+    normalize_tab_user_label, pane_drag_floating_preview_origin, pane_drag_needs_horizontal_tabs,
     pane_split_drop_target_from_position, pane_title_drag_tab_slot, pane_title_drag_to_tab_active,
     rebase_active_tab_for_insert, remap_tab_rename_state_after_close,
     remap_tab_rename_state_after_reorder, split_preview_local_rect, split_preview_regions,
@@ -24,6 +24,20 @@ use crate::sidebar::{
 };
 use gpui::{Bounds, MouseButton, Pixels, Point, Size, point, px, size};
 use std::path::{Path, PathBuf};
+
+#[test]
+fn pane_promotion_keeps_the_current_tab_orientation() {
+    assert!(
+        !pane_drag_needs_horizontal_tabs(true, true),
+        "vertical tabs already provide the promotion destination"
+    );
+    assert!(
+        pane_drag_needs_horizontal_tabs(false, true),
+        "a single horizontal tab still needs a drop destination"
+    );
+    assert!(!pane_drag_needs_horizontal_tabs(false, false));
+    assert!(!pane_drag_needs_horizontal_tabs(true, false));
+}
 
 #[test]
 fn file_tree_root_for_terminal_focus_uses_terminal_cwd() {
