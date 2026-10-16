@@ -59,6 +59,10 @@ must not begin a drag against a moving sidebar edge.
   FPS. Correct spring math is not evidence that terminal resizing is cheap.
 - Run native Windows/Linux tests and visual acceptance when hardware is
   available; macOS evidence does not establish those results.
+- Include internal and external displays, with the same display tested on
+  battery and AC. A low reproduction rate on an external 60 Hz display does
+  not validate an internal adaptive-refresh display. Record the actual display
+  and power configuration rather than inferring Low Power Mode from battery use.
 
 ## Adjacent Controls
 
