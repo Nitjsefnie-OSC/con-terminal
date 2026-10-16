@@ -7,6 +7,14 @@ fn ready_ui_events<T>(receive: impl FnMut() -> Option<T>) -> impl Iterator<Item 
     std::iter::from_fn(receive).take(64)
 }
 
+fn horizontal_tab_strip_target(orientation: TabsOrientation, tab_count: usize) -> f32 {
+    if orientation == TabsOrientation::Horizontal && tab_count > 1 {
+        1.0
+    } else {
+        0.0
+    }
+}
+
 #[cfg(test)]
 mod event_fairness_tests {
     use super::ready_ui_events;
@@ -37,6 +45,31 @@ mod event_fairness_tests {
         let last: Vec<_> = ready_ui_events(|| queue.pop_front()).collect();
         assert_eq!(last, (128..150).collect::<Vec<_>>());
         assert!(ready_ui_events(|| queue.pop_front()).next().is_none());
+    }
+}
+
+#[cfg(test)]
+mod tab_strip_restore_tests {
+    use super::{MotionValue, TabsOrientation, horizontal_tab_strip_target};
+
+    #[test]
+    fn restored_vertical_tabs_never_start_an_empty_horizontal_tray() {
+        for count in [0, 1, 2, 12] {
+            let motion = MotionValue::new(horizontal_tab_strip_target(
+                TabsOrientation::Vertical,
+                count,
+            ));
+            assert_eq!(motion.current(), 0.0);
+            assert!(!motion.is_animating());
+        }
+        assert_eq!(
+            horizontal_tab_strip_target(TabsOrientation::Horizontal, 1),
+            0.0
+        );
+        assert_eq!(
+            horizontal_tab_strip_target(TabsOrientation::Horizontal, 2),
+            1.0
+        );
     }
 }
 
@@ -839,7 +872,8 @@ impl ConWorkspace {
             }
         }
 
-        let has_multiple_tabs = tabs.len() > 1;
+        let initial_tab_strip_target =
+            horizontal_tab_strip_target(config.appearance.tabs_orientation, tabs.len());
         let last_ghostty_wake_generation = ghostty_app.wake_generation();
         let next_tab_summary_id_init = tabs.len() as u64;
 
@@ -891,7 +925,7 @@ impl ConWorkspace {
                 0.0
             }),
             agent_panel_width,
-            tab_strip_motion: MotionValue::new(if has_multiple_tabs { 1.0 } else { 0.0 }),
+            tab_strip_motion: MotionValue::new(initial_tab_strip_target),
             tab_slot_motion: Default::default(),
             input_bar_visible: session.input_bar_visible,
             input_bar_motion: SidebarMotion::new(if session.input_bar_visible { 1.0 } else { 0.0 }),
@@ -1190,7 +1224,7 @@ impl ConWorkspace {
     }
 
     pub(super) fn horizontal_tabs_visible(&self) -> bool {
-        !self.vertical_tabs_enabled() && self.tabs.len() > 1
+        horizontal_tab_strip_target(self.config.appearance.tabs_orientation, self.tabs.len()) > 0.5
     }
 
     pub(super) fn vertical_tabs_enabled(&self) -> bool {
@@ -1198,11 +1232,8 @@ impl ConWorkspace {
     }
 
     pub(super) fn sync_tab_strip_motion(&mut self) -> bool {
-        let target = if self.horizontal_tabs_visible() {
-            1.0
-        } else {
-            0.0
-        };
+        let target =
+            horizontal_tab_strip_target(self.config.appearance.tabs_orientation, self.tabs.len());
         let changed = (self.tab_strip_motion.current() - target).abs() > 0.001;
         self.tab_strip_motion.set_target(
             target,
