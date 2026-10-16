@@ -114,6 +114,14 @@ struct NativeBackingSync {
 unsafe extern "C" {
     fn con_terminal_canvas_generation(view: *mut c_void) -> u64;
     fn con_terminal_canvas_apply_clip(view: *mut c_void);
+    fn con_terminal_pane_set_clip(
+        view: *mut c_void,
+        x: f64,
+        y: f64,
+        width: f64,
+        height: f64,
+        radius: f64,
+    ) -> bool;
     fn objc_getAssociatedObject(object: id, key: *const c_void) -> id;
     fn objc_setAssociatedObject(object: id, key: *const c_void, value: id, policy: usize);
     fn con_ghostty_surface_install_backing_observer(view: *mut c_void, surface: *mut c_void);
@@ -363,6 +371,8 @@ pub struct GhosttyView {
     #[cfg(target_os = "macos")]
     native_canvas_generation: u64,
     #[cfg(target_os = "macos")]
+    native_pane_clip: Option<(Bounds<Pixels>, f32)>,
+    #[cfg(target_os = "macos")]
     mouse_cursor: CursorStyle,
     #[cfg(target_os = "macos")]
     pending_mouse_visible: Cell<Option<bool>>,
@@ -463,6 +473,8 @@ impl GhosttyView {
             pending_native_layout: false,
             #[cfg(target_os = "macos")]
             native_canvas_generation: 0,
+            #[cfg(target_os = "macos")]
+            native_pane_clip: None,
             #[cfg(target_os = "macos")]
             mouse_cursor: CursorStyle::IBeam,
             #[cfg(target_os = "macos")]
@@ -1808,6 +1820,40 @@ impl GhosttyView {
     }
 
     #[cfg(target_os = "macos")]
+    pub(crate) fn set_pane_clip(&mut self, bounds: Bounds<Pixels>, radius: f32, window: &Window) {
+        let bounds = crate::terminal_geometry::snap_terminal_bounds(bounds, window.scale_factor());
+        self.native_pane_clip = Some((bounds, radius));
+        self.apply_pane_clip(window);
+    }
+
+    #[cfg(target_os = "macos")]
+    fn apply_pane_clip(&self, window: &Window) {
+        let Some((bounds, radius)) = self.native_pane_clip else {
+            return;
+        };
+        // The transition underlay is shared by the entire window. Only the
+        // individual terminal host belongs to this pane.
+        if let Some(view) = self.host_view {
+            let changed = unsafe {
+                con_terminal_pane_set_clip(
+                    view as *mut c_void,
+                    f64::from(bounds.left()),
+                    f64::from(bounds.top()),
+                    f64::from(bounds.size.width),
+                    f64::from(bounds.size.height),
+                    f64::from(radius),
+                )
+            };
+            if changed {
+                window.request_native_surface_presentation_sync();
+                unsafe {
+                    con_terminal_canvas_apply_clip(view as *mut c_void);
+                }
+            }
+        }
+    }
+
+    #[cfg(target_os = "macos")]
     fn update_frame(&mut self, bounds: Bounds<Pixels>, window: &Window) {
         let bounds = crate::terminal_geometry::snap_terminal_bounds(bounds, window.scale_factor());
         let canvas_generation = self.host_view.map_or(0, |host| unsafe {
@@ -1867,6 +1913,7 @@ impl GhosttyView {
         }
 
         self.sync_native_scroll_view();
+        self.apply_pane_clip(window);
         if let Some(host) = self.host_view {
             unsafe { con_terminal_canvas_apply_clip(host as *mut c_void) };
         }

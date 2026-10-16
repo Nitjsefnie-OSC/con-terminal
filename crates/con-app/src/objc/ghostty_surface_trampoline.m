@@ -28,8 +28,11 @@ static char kConTerminalCanvasMaskKey;
 
 @interface ConTerminalCanvasMask : NSObject
 @property(nonatomic, strong) CAShapeLayer *layer;
+@property(nonatomic, strong) CAShapeLayer *paneLayer;
 @property(nonatomic) NSRect rect;
 @property(nonatomic) NSRect bounds;
+@property(nonatomic) NSRect paneRect;
+@property(nonatomic) CGFloat paneRadius;
 @property(nonatomic) CGFloat radius;
 @property(nonatomic) CGFloat scale;
 @end
@@ -46,6 +49,28 @@ static char kConTerminalCanvasMaskKey;
 - (BOOL)acceptsFirstResponder { return NO; }
 @end
 static char kConTerminalCanvasSafeAreaKey;
+static char kConTerminalPaneClipKey;
+
+// Pane bounds use the same parent coordinate system as the workspace clip.
+// Keeping them on each host leaves the window-wide transition underlay alone.
+bool con_terminal_pane_set_clip(void *host_ptr, double x, double y,
+                                double width, double height, double radius) {
+    NSView *host = (__bridge NSView *)host_ptr;
+    if (host == nil || host.superview == nil || !isfinite(x) || !isfinite(y) ||
+        !isfinite(width) || !isfinite(height) || !isfinite(radius) ||
+        width < 0 || height < 0 || radius < 0) return false;
+    NSRect rect = NSMakeRect(x, host.superview.bounds.size.height - y - height, width, height);
+    radius = fmin(radius, fmin(width, height) * 0.5);
+    ConTerminalCanvasClip *clip = objc_getAssociatedObject(host, &kConTerminalPaneClipKey);
+    if (clip != nil && NSEqualRects(clip.rect, rect) && clip.radius == radius) return false;
+    if (clip == nil) {
+        clip = [ConTerminalCanvasClip new];
+        objc_setAssociatedObject(host, &kConTerminalPaneClipKey, clip, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+    }
+    clip.rect = rect;
+    clip.radius = radius;
+    return true;
+}
 
 static NSView *con_terminal_parent(NSView *gpui) {
     return gpui.superview ?: gpui;
@@ -93,6 +118,9 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     ConTerminalCanvasClip *clip = objc_getAssociatedObject(host.superview, &kConTerminalCanvasKey);
     if (clip == nil || host.layer == nil) return;
     NSRect rect = [host convertRect:clip.rect fromView:host.superview];
+    ConTerminalCanvasClip *pane = objc_getAssociatedObject(host, &kConTerminalPaneClipKey);
+    CGFloat paneRadius = pane.radius;
+    NSRect paneRect = paneRadius > 0 ? [host convertRect:pane.rect fromView:host.superview] : NSZeroRect;
     CGFloat scale = host.window != nil ? host.window.backingScaleFactor : host.layer.contentsScale;
     if (!isfinite(scale) || scale <= 0.0) scale = 1.0;
     ConTerminalCanvasMask *mask = objc_getAssociatedObject(host, &kConTerminalCanvasMaskKey);
@@ -100,16 +128,21 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
         mask = [ConTerminalCanvasMask new];
         mask.layer = [CAShapeLayer layer];
         mask.layer.fillColor = NSColor.blackColor.CGColor;
+        mask.paneLayer = [CAShapeLayer layer];
+        mask.paneLayer.fillColor = NSColor.blackColor.CGColor;
         objc_setAssociatedObject(host, &kConTerminalCanvasMaskKey, mask, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
     } else if (NSEqualRects(mask.rect, rect) && NSEqualRects(mask.bounds, host.bounds) &&
-               mask.radius == clip.radius && mask.scale == scale) {
+               mask.radius == clip.radius && mask.scale == scale &&
+               mask.paneRadius == paneRadius && NSEqualRects(mask.paneRect, paneRect)) {
         return;
     }
     mask.rect = rect;
     mask.bounds = host.bounds;
     mask.radius = clip.radius;
     mask.scale = scale;
-    if (clip.radius <= 0.0 && NSContainsRect(rect, host.bounds)) {
+    mask.paneRadius = paneRadius;
+    mask.paneRect = paneRect;
+    if (clip.radius <= 0.0 && paneRadius <= 0.0 && NSContainsRect(rect, host.bounds)) {
         // Clean mode needs no extra offscreen mask for an already-contained host.
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
@@ -123,6 +156,16 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     mask.layer.frame = host.bounds;
     mask.layer.contentsScale = scale;
     mask.layer.path = path;
+    if (paneRadius > 0) {
+        CGPathRef panePath = CGPathCreateWithRoundedRect(NSRectToCGRect(paneRect), paneRadius, paneRadius, NULL);
+        mask.paneLayer.frame = host.bounds;
+        mask.paneLayer.contentsScale = scale;
+        mask.paneLayer.path = panePath;
+        mask.layer.mask = mask.paneLayer;
+        CGPathRelease(panePath);
+    } else {
+        mask.layer.mask = nil;
+    }
     host.layer.mask = mask.layer;
     [CATransaction commit];
     CGPathRelease(path);

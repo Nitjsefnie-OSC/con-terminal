@@ -14,6 +14,8 @@ use crate::editor_view::EditorView;
 use crate::sidebar::{DraggedTab, DraggedTabOrigin};
 use crate::terminal_pane::TerminalPane;
 use crate::ui_scale::{mono_icon_px, mono_px};
+#[cfg(target_os = "macos")]
+use gpui_component::ElementExt;
 
 const RESTORED_SCREEN_TEXT_MAX_LINES: usize = 600;
 const RESTORED_SCREEN_TEXT_MAX_BYTES: usize = 128 * 1024;
@@ -2338,14 +2340,22 @@ impl PaneTree {
             .debug_selector(move || format!("pane-title-label-{pane_id}"))
             .w_full()
             .min_w_0()
-            .px(title_inset)
+            .map(|label| {
+                #[cfg(target_os = "macos")]
+                {
+                    label.pl(px(10.0)).pr(title_inset)
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    label.px(title_inset).text_center()
+                }
+            })
             .truncate()
             .text_size(px(12.0))
             .line_height(px(16.0))
             .font_family(theme.font_family.clone())
             .font_weight(FontWeight::MEDIUM)
             .text_color(title_color)
-            .text_center()
             .tooltip({
                 let title = title.clone();
                 move |window, cx| Tooltip::new(title.clone()).build(window, cx)
@@ -2381,7 +2391,7 @@ impl PaneTree {
             .map(|bar| {
                 #[cfg(target_os = "macos")]
                 {
-                    bar.child(crate::workspace::frame::header_background(bar_bg))
+                    bar.child(crate::workspace::frame::pane_header_background(bar_bg, 7.0))
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
@@ -2895,20 +2905,8 @@ impl PaneTree {
 
         // Surface strip — only when there are multiple surfaces or an owner/title
         if show_surface_strip {
-            let rail_label = format!(
-                "{} tab{}",
-                surfaces.len(),
-                if surfaces.len() == 1 { "" } else { "s" }
-            );
             let strip_bg = Self::pane_chrome_bg(theme, is_focused, tab_accent_inactive_alpha);
-            let rail_bg = if is_focused {
-                theme.tab_bar_segmented.opacity(0.72)
-            } else {
-                theme.tab_bar_segmented.opacity(0.58)
-            };
-            let rail_text = theme
-                .foreground
-                .opacity(if is_focused { 0.66 } else { 0.50 });
+            let rail_bg = theme.transparent;
 
             let mut surface_rail = div()
                 .id(("surface-tab-strip", pane_id))
@@ -2920,37 +2918,9 @@ impl PaneTree {
                 .max_w(relative(1.0))
                 .px(px(4.0))
                 .rounded(px(7.0))
-                .font_family(theme.mono_font_family.clone())
+                .font_family(theme.font_family.clone())
                 .bg(rail_bg)
                 .overflow_x_scroll();
-
-            surface_rail = surface_rail.child(
-                div()
-                    .flex()
-                    .items_center()
-                    .gap(px(4.0))
-                    .flex_shrink_0()
-                    .pl(px(2.0))
-                    .pr(px(4.0))
-                    .text_size(px(11.0))
-                    .line_height(px(13.0))
-                    .font_weight(FontWeight::NORMAL)
-                    .text_color(rail_text)
-                    .child(
-                        svg()
-                            .path("phosphor/stack-fill.svg")
-                            .size(mono_icon_px(theme, 9.0))
-                            .text_color(rail_text.opacity(0.82)),
-                    )
-                    .child(SharedString::from(rail_label)),
-            );
-            surface_rail = surface_rail.child(
-                div()
-                    .w(px(1.0))
-                    .h(px(12.0))
-                    .flex_shrink_0()
-                    .bg(theme.foreground.opacity(0.14)),
-            );
 
             for (index, surface) in surfaces.iter().enumerate() {
                 let is_active = surface.id == active_surface_id;
@@ -2959,12 +2929,19 @@ impl PaneTree {
                     .clone()
                     .unwrap_or_else(|| format!("Surface {}", index + 1));
                 let color = if is_active {
-                    theme.foreground.opacity(0.90)
+                    theme.foreground
                 } else {
-                    theme.foreground.opacity(0.54)
+                    theme.muted_foreground
                 };
                 let bg = if is_active {
-                    theme.tab_active.opacity(0.96)
+                    theme
+                        .title_bar
+                        .blend(
+                            theme
+                                .foreground
+                                .opacity(if theme.is_dark() { 0.10 } else { 0.055 }),
+                        )
+                        .opacity(1.0)
                 } else {
                     theme.transparent
                 };
@@ -3001,7 +2978,7 @@ impl PaneTree {
                     .flex_shrink_0()
                     .pl(px(6.0))
                     .pr(if can_close { px(2.0) } else { px(8.0) })
-                    .rounded(px(6.0))
+                    .rounded_full()
                     .bg(bg)
                     .cursor_pointer()
                     .hover(move |s| s.bg(hover_bg))
@@ -3040,7 +3017,7 @@ impl PaneTree {
                                     .truncate()
                                     .text_size(px(12.0))
                                     .line_height(px(14.0))
-                                    .font_family(theme.mono_font_family.clone())
+                                    .font_family(theme.font_family.clone())
                                     .font_weight(if is_active {
                                         FontWeight::MEDIUM
                                     } else {
@@ -3136,7 +3113,36 @@ impl PaneTree {
             col = col.child(strip);
         }
 
-        col.child(terminal_host).into_any_element()
+        let col = col.child(terminal_host);
+        #[cfg(target_os = "macos")]
+        {
+            let terminals = surfaces
+                .iter()
+                .map(|surface| surface.terminal.clone())
+                .collect::<Vec<_>>();
+            let radius = if tree_has_splits { 7.0 } else { 0.0 };
+            let pane = col
+                .relative()
+                .id(("terminal-pane-card", pane_id))
+                .on_prepaint(move |bounds, window, cx| {
+                    for terminal in &terminals {
+                        terminal.set_pane_clip(bounds, radius, window, cx);
+                    }
+                });
+            div()
+                .relative()
+                .size_full()
+                .p(px(if tree_has_splits { 2.0 } else { 0.0 }))
+                .child(pane)
+                .when(tree_has_splits, |container| {
+                    container.child(active.terminal.pane_surround(theme.title_bar.opacity(1.0)))
+                })
+                .into_any_element()
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            col.into_any_element()
+        }
     }
 
     fn find_focused_pane(node: &PaneNode, window: &Window, cx: &App) -> Option<PaneId> {

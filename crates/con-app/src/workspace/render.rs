@@ -477,7 +477,6 @@ impl Render for ConWorkspace {
         let chrome_transition_seam_color = terminal_surface_color;
         let chrome_static_seam_color =
             terminal_separator_over_backdrop(terminal_surface_color, theme);
-        let pane_divider_color = terminal_separator_over_backdrop(terminal_surface_color, theme);
         #[cfg(not(target_os = "macos"))]
         let top_bar_surface_color = theme.title_bar.opacity(ui_surface_opacity);
         #[cfg(target_os = "macos")]
@@ -487,6 +486,11 @@ impl Render for ConWorkspace {
             .opacity(ui_surface_opacity);
         #[cfg(not(target_os = "macos"))]
         let input_bar_surface_color = top_bar_surface_color;
+        let pane_divider_color = if cfg!(target_os = "macos") {
+            top_bar_surface_color
+        } else {
+            terminal_separator_over_backdrop(terminal_surface_color, theme)
+        };
         // Auxiliary chrome shares the titlebar's material. These quiet inner
         // edges are decoration, not the native transition/drag seam covers.
         // A slight material step makes the panel's header readable even
@@ -1071,7 +1075,16 @@ impl Render for ConWorkspace {
                     .flex_shrink_0()
                     .flex()
                     .flex_row()
-                    .bg(agent_panel_surface_color)
+                    .map(|panel| {
+                        #[cfg(target_os = "macos")]
+                        {
+                            panel.p(px(frame::CANVAS_INSET)).bg(top_bar_surface_color)
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            panel.bg(agent_panel_surface_color)
+                        }
+                    })
                     .child(
                         div()
                             .absolute()
@@ -1085,7 +1098,7 @@ impl Render for ConWorkspace {
                         div()
                             .id("agent-panel-divider")
                             .relative()
-                            .w(px(1.0))
+                            .w(px(if cfg!(target_os = "macos") { 0.0 } else { 1.0 }))
                             .h_full()
                             .flex_shrink_0()
                             .child(
@@ -1127,10 +1140,28 @@ impl Render for ConWorkspace {
                     )
                     .child(
                         div()
-                            .w(px(effective_agent_panel_width))
+                            .w(px(effective_agent_panel_width
+                                - if cfg!(target_os = "macos") {
+                                    2.0 * frame::CANVAS_INSET - 1.0
+                                } else {
+                                    0.0
+                                }))
                             .flex_shrink_0()
                             .min_w_0()
                             .h_full()
+                            .map(|panel| {
+                                #[cfg(target_os = "macos")]
+                                {
+                                    panel
+                                        .rounded(px(frame::CANVAS_RADIUS))
+                                        .overflow_hidden()
+                                        .bg(agent_panel_surface_color)
+                                }
+                                #[cfg(not(target_os = "macos"))]
+                                {
+                                    panel
+                                }
+                            })
                             .child(
                                 self.agent_panel
                                     .clone()

@@ -48,6 +48,56 @@ pub(super) struct CanvasSurround {
     cache: Rc<RefCell<Option<SurroundGeometry>>>,
 }
 
+/// Small, cached cutouts only. A full-size fill would make terminal glass
+/// opaque, and a viewport-sized path with a hole still pays a large Metal blit.
+#[derive(Clone, Default)]
+pub(crate) struct PaneSurround {
+    cache: Rc<RefCell<Option<SurroundGeometry>>>,
+}
+
+impl PaneSurround {
+    pub fn render(&self, color: Hsla) -> impl IntoElement + use<> {
+        let cache = self.cache.clone();
+        gpui::canvas(
+            move |bounds, window, _| {
+                let scale = window.scale_factor();
+                let bounds = crate::terminal_geometry::snap_terminal_bounds(bounds, scale);
+                let inset = px(2.0)
+                    .min(bounds.size.width * 0.5)
+                    .min(bounds.size.height * 0.5);
+                let mut cache = cache.borrow_mut();
+                if cache
+                    .as_ref()
+                    .is_none_or(|old| old.bounds != bounds || old.scale != scale)
+                {
+                    *cache = Some(SurroundGeometry {
+                        bounds,
+                        depth: 1.0,
+                        scale,
+                        corners: corner_cutouts(bounds.inset(inset), 7.0, scale),
+                    });
+                }
+                (
+                    surround_strips(bounds, inset),
+                    cache.as_ref().unwrap().corners.clone(),
+                )
+            },
+            move |_, (strips, corners), window, _| {
+                for strip in strips {
+                    window.paint_quad(gpui::fill(strip, color));
+                }
+                for corner in corners {
+                    window.paint_path(corner, color);
+                }
+            },
+        )
+        .absolute()
+        .size_full()
+        .top_0()
+        .left_0()
+    }
+}
+
 struct SurroundGeometry {
     bounds: Bounds<Pixels>,
     depth: f32,
@@ -291,6 +341,22 @@ pub(crate) fn header_background(color: Hsla) -> impl IntoElement {
     .left_0()
 }
 
+pub(crate) fn pane_header_background(color: Hsla, radius: f32) -> impl IntoElement {
+    gpui::canvas(
+        |_, _, _| {},
+        move |bounds, (), window, _| {
+            let mut quad = gpui::fill(bounds, color);
+            quad.corner_radii.top_left = px(radius);
+            quad.corner_radii.top_right = px(radius);
+            window.paint_quad(quad);
+        },
+    )
+    .absolute()
+    .size_full()
+    .top_0()
+    .left_0()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -518,6 +584,14 @@ mod tests {
         unsafe extern "C" {
             fn con_terminal_canvas_generation(view: *mut c_void) -> u64;
             fn con_terminal_canvas_apply_clip(view: *mut c_void);
+            fn con_terminal_pane_set_clip(
+                view: *mut c_void,
+                x: f64,
+                y: f64,
+                width: f64,
+                height: f64,
+                radius: f64,
+            ) -> bool;
             fn CGPathContainsPoint(
                 path: *const c_void,
                 transform: *const c_void,
@@ -619,6 +693,98 @@ mod tests {
                 clean_mask.is_null(),
                 "clean terminal retained an offscreen mask"
             );
+            // A split pane intersects the workspace mask; it must not replace
+            // it, rebuild idle paths, or leave rounded clipping after unzoom.
+            let _: () = msg_send![host, setFrame: NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(600.0, 400.0))];
+            assert!(con_terminal_pane_set_clip(
+                host.cast(),
+                10.0,
+                10.0,
+                280.0,
+                380.0,
+                7.0
+            ));
+            con_terminal_canvas_apply_clip(host.cast());
+            let pane_mask: *mut objc::runtime::Object = msg_send![layer, mask];
+            let inner_mask: *mut objc::runtime::Object = msg_send![pane_mask, mask];
+            assert!(!inner_mask.is_null());
+            let pane_path: *const c_void = msg_send![inner_mask, path];
+            let sibling: *mut objc::runtime::Object = msg_send![class!(NSView), alloc];
+            let sibling: *mut objc::runtime::Object = msg_send![sibling, initWithFrame: NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(600.0, 400.0))];
+            let _: () = msg_send![parent, addSubview: sibling];
+            let _: () = msg_send![sibling, setWantsLayer: true];
+            con_terminal_canvas_apply_clip(sibling.cast());
+            let sibling_layer: *mut objc::runtime::Object = msg_send![sibling, layer];
+            let sibling_mask: *mut objc::runtime::Object = msg_send![sibling_layer, mask];
+            assert!(
+                sibling_mask.is_null(),
+                "a local pane mask escaped into its sibling or shared underlay"
+            );
+            let _: () = msg_send![sibling, removeFromSuperview];
+            let _: () = msg_send![sibling, release];
+            assert!(CGPathContainsPoint(
+                pane_path,
+                std::ptr::null(),
+                NSPoint::new(150.0, 200.0),
+                false
+            ));
+            assert!(!CGPathContainsPoint(
+                pane_path,
+                std::ptr::null(),
+                NSPoint::new(10.5, 10.5),
+                false
+            ));
+            assert!(!con_terminal_pane_set_clip(
+                host.cast(),
+                10.0,
+                10.0,
+                280.0,
+                380.0,
+                7.0
+            ));
+            con_terminal_canvas_apply_clip(host.cast());
+            let unchanged: *const c_void = msg_send![inner_mask, path];
+            assert_eq!(pane_path, unchanged);
+            assert!(!con_terminal_pane_set_clip(
+                host.cast(),
+                f64::NAN,
+                0.0,
+                1.0,
+                1.0,
+                7.0
+            ));
+            assert!(con_terminal_canvas_set_clip(
+                parent_ptr, 20.0, 0.0, 580.0, 400.0, 8.0
+            ));
+            con_terminal_canvas_apply_clip(host.cast());
+            let outer_path: *const c_void = msg_send![pane_mask, path];
+            let pane_path: *const c_void = msg_send![inner_mask, path];
+            assert!(!CGPathContainsPoint(
+                outer_path,
+                std::ptr::null(),
+                NSPoint::new(15.0, 200.0),
+                false
+            ));
+            assert!(CGPathContainsPoint(
+                pane_path,
+                std::ptr::null(),
+                NSPoint::new(15.0, 200.0),
+                false
+            ));
+            assert!(con_terminal_pane_set_clip(
+                host.cast(),
+                0.0,
+                0.0,
+                600.0,
+                400.0,
+                0.0
+            ));
+            assert!(con_terminal_canvas_set_clip(
+                parent_ptr, 0.0, 0.0, 600.0, 400.0, 0.0
+            ));
+            con_terminal_canvas_apply_clip(host.cast());
+            let reset_mask: *mut objc::runtime::Object = msg_send![layer, mask];
+            assert!(reset_mask.is_null(), "zoom retained the outgoing pane mask");
             assert!(con_terminal_canvas_set_clip(
                 parent_ptr, 0.0, 0.0, 1.0, 1.0, 9.0
             ));

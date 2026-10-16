@@ -16,6 +16,9 @@ con is still pre-release, so entries may group related beta work while the produ
   takes less vertical space, and the input island reveals in place rather than
   sliding the terminal on every animation frame.
   A single tab without sidebars keeps the clean, edge-to-edge terminal layout.
+- Split panes and the agent panel share the canvas's quiet, rounded treatment
+  on macOS. Surface tabs use clearer labels, and compact-tab details stay in a
+  stable, readable hover card.
 
 ## `v0.1.0-beta.138` - 2026-10-16
 

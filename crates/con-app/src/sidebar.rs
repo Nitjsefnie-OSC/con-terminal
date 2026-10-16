@@ -1231,12 +1231,8 @@ impl SessionSidebar {
     /// Composed in workspace coordinates so it renders OVER the
     /// translucent terminal pane (instead of behind it).
     ///
-    /// The card vertically tracks the cursor's current y so the user
-    /// always sees the card beside their finger. Anchoring it to the
-    /// icon's geometric center sounded cleaner but actually requires
-    /// computing the rail layout from this side, which is brittle —
-    /// the cursor IS the icon, and "follow the cursor" is the
-    /// established Apple tooltip pattern (Finder, Mail, Safari).
+    /// Anchor to the measured tile, not cursor movement within it. This keeps
+    /// the details stable while the user reads them or moves to another tab.
     ///
     /// Composed by the workspace as a root overlay (window coordinates)
     /// so it paints above the terminal and is not clipped by the
@@ -1255,15 +1251,27 @@ impl SessionSidebar {
         }
         let session = self.sessions.get(i)?;
         let theme = cx.theme();
-        let bg = elevated_surface(theme, self.ui_opacity);
+        let bg = theme
+            .background
+            .blend(
+                theme
+                    .foreground
+                    .opacity(if theme.is_dark() { 0.08 } else { 0.035 }),
+            )
+            .opacity(1.0);
         let cursor = window.mouse_position();
+        let anchor_y = self
+            .tab_bounds
+            .borrow()
+            .get(i)
+            .map(|bounds| bounds.top())
+            .unwrap_or(cursor.y - ui_px(theme, 21.0));
         let min_top = self.leading_top_pad + RAIL_TOP_CONTROLS_HEIGHT + 8.0;
         let max_height = (window.viewport_size().height.as_f32() - min_top - 8.0).clamp(1.0, 240.0);
 
         let name_color = theme.foreground;
         let sub_color = theme.muted_foreground;
         let meta_color = theme.muted_foreground;
-        let mono_font = theme.mono_font_family.clone();
         let sys_font = theme.font_family.clone();
 
         let mut card_inner = div()
@@ -1293,7 +1301,7 @@ impl SessionSidebar {
                     .text_size(ui_px(theme, 11.0))
                     .line_height(ui_px(theme, 16.0))
                     .text_color(sub_color)
-                    .font_family(mono_font)
+                    .font_family(theme.font_family.clone())
                     .w_full()
                     .child(sub.clone()),
             );
@@ -1318,7 +1326,7 @@ impl SessionSidebar {
                         .flex_shrink_0()
                         .text_size(ui_px(theme, 11.0))
                         .line_height(ui_px(theme, 16.0))
-                        .font_family(theme.mono_font_family.clone())
+                        .font_family(theme.font_family.clone())
                         .text_color(theme.foreground)
                         .truncate()
                         .child(title.clone()),
@@ -1371,7 +1379,13 @@ impl SessionSidebar {
                     .child(div().child("unread")),
             );
         }
-        card_inner = card_inner.child(meta);
+        if session.pane_count > 1
+            || session.is_ssh
+            || session.needs_attention
+            || session.status_detail.is_some()
+        {
+            card_inner = card_inner.child(meta);
+        }
 
         let card = div()
             .id("tab-sidebar-hover-card")
@@ -1379,7 +1393,8 @@ impl SessionSidebar {
             .w(px(HOVER_CARD_WIDTH.min(
                 (window.viewport_size().width.as_f32() - RAIL_WIDTH - 14.0).max(1.0),
             )))
-            .rounded(px(8.0))
+            .rounded(px(10.0))
+            .overflow_hidden()
             .bg(bg)
             .occlude()
             .child(
@@ -1393,10 +1408,7 @@ impl SessionSidebar {
         // of estimating its height from character counts or line counts.
         Some(
             anchored()
-                .position(point(
-                    px(RAIL_WIDTH + 6.0),
-                    (cursor.y - ui_px(theme, 21.0)).max(px(min_top)),
-                ))
+                .position(point(px(RAIL_WIDTH + 6.0), anchor_y.max(px(min_top))))
                 .snap_to_window_with_margin(px(8.0))
                 .child(card)
                 .into_any_element(),
@@ -2100,10 +2112,6 @@ fn surface_tone(theme: &gpui_component::Theme, intensity: f32) -> Hsla {
     theme.background.blend(over)
 }
 
-fn elevated_surface(theme: &gpui_component::Theme, opacity: f32) -> Hsla {
-    theme.background.opacity((opacity + 0.06).min(0.98))
-}
-
 fn sidebar_selection_fill(theme: &gpui_component::Theme) -> Hsla {
     theme
         .foreground
@@ -2689,6 +2697,36 @@ mod tests {
                     sidebar.render_hover_card_overlay(window, cx)
                 }))
         }
+    }
+
+    #[gpui::test]
+    fn hover_details_anchor_to_the_tile_and_omit_redundant_single_pane_metadata(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        cx.update(gpui_component::init);
+        let (view, cx) = cx.add_window_view(|_, cx| {
+            use gpui::AppContext;
+            HoverCardTestView(cx.new(|cx| {
+                let mut sidebar = SessionSidebar::new(cx);
+                sidebar.hovered_rail = Some(0);
+                sidebar.sessions = vec![session(None, None)];
+                sidebar.tab_bounds.borrow_mut().push(Bounds::new(
+                    gpui::point(px(8.0), px(300.0)),
+                    gpui::size(px(40.0), px(40.0)),
+                ));
+                sidebar
+            }))
+        });
+        let before = cx.debug_bounds("tab-hover-card").unwrap();
+        assert_eq!(before.top(), px(300.0));
+        assert!(cx.debug_bounds("tab-hover-meta").is_none());
+        cx.simulate_mouse_move(
+            gpui::point(px(22.0), px(332.0)),
+            gpui::MouseButton::Left,
+            gpui::Modifiers::default(),
+        );
+        view.update(cx, |_, cx| cx.notify());
+        assert_eq!(cx.debug_bounds("tab-hover-card").unwrap(), before);
     }
 
     #[gpui::test]

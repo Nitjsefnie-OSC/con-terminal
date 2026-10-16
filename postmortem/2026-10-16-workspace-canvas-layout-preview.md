@@ -43,6 +43,13 @@ continue a second animation after navigation has settled. Compact controls share
 is fixed in place and revealed through a clip; output reservation changes once
 at reveal/fully-covered boundaries instead of resizing the PTY on every frame.
 
+The follow-up visual pass extends this geometry to split panes and the agent
+panel. Each terminal host gets a pane-local rounded mask intersected with the
+workspace mask; the shared window transition underlay is deliberately excluded.
+Unchanged masks retain their paths, and unsplit panes remove the local mask.
+Compact-tab details anchor to measured tiles rather than following the pointer.
+Surface labels use UI typography and no longer sit inside an extra nested track.
+
 ## Verification and remaining acceptance
 
 Focused macOS tests cover safe-area geometry, bounded width, caption clearance,
@@ -58,6 +65,16 @@ Rapid mode changes, the new-tab upper-left boundary, terminal scrolling and
 material continuity still need user acceptance. No Windows/Linux runtime or
 frame-rate benchmark was performed. This work does not close the separate
 internal-display/battery native-presentation regression.
+
+The pane follow-up passed 111 focused macOS tests, including linked native
+tests for intersecting masks, sibling isolation, cache reuse and mask removal.
+The app/CLI build and strict Clippy checks passed. A temporary surface reached
+shell-ready state and was removed without closing its pane. However, live
+inspection also showed stale GPUI chrome and gray native regions until a window
+resize refreshed presentation. Sampling found the main thread in its event
+loop, not blocked in the new clipping calls. The cause is not established and
+this is not a passed visual acceptance. Keep the prototype local until the
+presentation mismatch and light/dark appearance have been confirmed.
 
 ## Lessons
 

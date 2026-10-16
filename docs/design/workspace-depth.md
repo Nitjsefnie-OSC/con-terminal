@@ -3,9 +3,18 @@
 ## Visual hierarchy
 
 On macOS, workspaces with sidebars or multiple tabs use an inset terminal
-canvas. It has 2pt of breathing room and 8pt outer corners. Split panes remain
-part of that one canvas: interior dividers are straight, and no separate cards or
-shadows compete with terminal content.
+canvas. It has 2pt of breathing room and 8pt outer corners. Split panes use 2pt
+insets and 7pt corners within that canvas. The original divider hit targets
+remain available between them; no outlines or shadows compete with content.
+Pane titles align to the leading edge and surface tabs use the UI font, without
+a nested track or redundant surface count. Their close and rename actions stay
+in the same pane-local scope.
+
+The agent panel uses the same 2pt inset and 8pt outer rounding. Its header,
+conversation and composer belong to one clipped surface, not separate frames.
+Compact-tab details use a stable tile anchor and one opaque, rounded material;
+they must remain readable over native terminal content. Omit a redundant
+single-pane footer when there is no other status to convey.
 
 The input bar floats on the continuous terminal canvas, rather than sitting in
 a separate chrome strip. A 10pt safe-area inset and 11pt corner radius distinguish
@@ -80,6 +89,11 @@ budget, without changing session tile or row hit targets.
 - Existing frame-scoped native presentation synchronization remains in place.
   A shape mask must not introduce an opaque terminal backing, a second glass
   fill or a delayed geometry update.
+- Each macOS terminal host intersects its pane-local rounded mask with the
+  workspace mask. Cache both paths and clear the local mask when the pane
+  returns to an unsplit layout. Never attach pane-local clipping to the shared
+  window transition underlay. Keep this path macOS-only until other backends
+  have equivalent native acceptance; GPUI rounding alone does not clip AppKit.
 - Caption motion has one owner: the sidebar's existing geometry spring. Reserved global-row height is the complement
   of docking progress, but docking can start only when the actual sidebar can
   contain all controls. The toolbar stays inside that sidebar, not somewhere
