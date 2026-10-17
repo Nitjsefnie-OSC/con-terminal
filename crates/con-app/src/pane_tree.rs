@@ -55,15 +55,19 @@ fn pane_resize_handle(
         SplitDirection::Horizontal => handle
             .top_0()
             .bottom_0()
-            .left(px(-crate::workspace::frame::PANE_INSET))
-            .w(px(crate::workspace::frame::CARD_GAP))
+            .left(px(
+                (1.0 - crate::workspace::frame::PANE_RESIZE_HIT_WIDTH) * 0.5
+            ))
+            .w(px(crate::workspace::frame::PANE_RESIZE_HIT_WIDTH))
             .cursor_col_resize()
             .child(grip.w(px(2.0)).h(px(28.0)).max_h(relative(0.35))),
         SplitDirection::Vertical => handle
             .left_0()
             .right_0()
-            .top(px(-crate::workspace::frame::PANE_INSET))
-            .h(px(crate::workspace::frame::CARD_GAP))
+            .top(px(
+                (1.0 - crate::workspace::frame::PANE_RESIZE_HIT_WIDTH) * 0.5
+            ))
+            .h(px(crate::workspace::frame::PANE_RESIZE_HIT_WIDTH))
             .cursor_row_resize()
             .child(grip.h(px(2.0)).w(px(28.0)).max_w(relative(0.35))),
     }
@@ -3772,12 +3776,13 @@ mod tests {
         tree: PaneTree,
         terminal: Entity<crate::ghostty_view::GhosttyView>,
         canvas_depth: f32,
+        outer_inset: f32,
     }
 
     #[cfg(target_os = "macos")]
     impl Render for SinglePaneClipTestView {
         fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-            self.tree.render(
+            let tree = self.tree.render(
                 1,
                 |_, _, _, _| {},
                 |_, _, _| {},
@@ -3794,7 +3799,8 @@ mod tests {
                 false,
                 self.canvas_depth,
                 cx,
-            )
+            );
+            div().size_full().p(px(self.outer_inset)).child(tree)
         }
     }
 
@@ -3822,6 +3828,7 @@ mod tests {
                 tree: PaneTree::new(pane),
                 terminal,
                 canvas_depth: 0.0,
+                outer_inset: 0.0,
             }
         });
         cx.simulate_resize(size(px(600.0), px(400.0)));
@@ -3846,9 +3853,62 @@ mod tests {
             assert_eq!(radius, crate::workspace::frame::PANE_RADIUS);
             assert_eq!(
                 bounds,
-                Bounds::new(point(px(3.0), px(3.0)), size(px(594.0), px(394.0)))
+                Bounds::new(point(px(2.0), px(2.0)), size(px(596.0), px(396.0)))
             );
         });
+    }
+
+    #[cfg(target_os = "macos")]
+    #[gpui::test]
+    fn split_card_clearance_matches_the_outer_edges_on_both_axes(cx: &mut gpui::TestAppContext) {
+        cx.update(gpui_component::init);
+        let app = std::sync::Arc::new(
+            con_ghostty::GhosttyApp::new(
+                None, None, None, None, None, None, None, None, None, None, None, None, None, false,
+            )
+            .unwrap(),
+        );
+        for direction in [SplitDirection::Horizontal, SplitDirection::Vertical] {
+            let mut second = None;
+            let (view, window_cx) = cx.add_window_view(|_, cx| {
+                let first = cx.new(|cx| {
+                    crate::ghostty_view::GhosttyView::new(app.clone(), None, None, 14.0, cx)
+                });
+                let next = cx.new(|cx| {
+                    crate::ghostty_view::GhosttyView::new(app.clone(), None, None, 14.0, cx)
+                });
+                let mut tree = PaneTree::new(TerminalPane::new(first.clone()));
+                tree.split(direction, TerminalPane::new(next.clone()));
+                second = Some(next);
+                SinglePaneClipTestView {
+                    tree,
+                    terminal: first,
+                    canvas_depth: 1.0,
+                    outer_inset: crate::workspace::frame::CANVAS_INSET,
+                }
+            });
+            for (width, height) in [(601.0, 401.0), (361.0, 241.0)] {
+                window_cx.simulate_resize(size(px(width), px(height)));
+                view.read_with(window_cx, |view, cx| {
+                    let (first, _) = view.terminal.read(cx).pane_clip_for_test().unwrap();
+                    let (second, _) = second
+                        .as_ref()
+                        .unwrap()
+                        .read(cx)
+                        .pane_clip_for_test()
+                        .unwrap();
+                    assert_eq!(first.left(), px(5.0));
+                    assert_eq!(first.top(), px(5.0));
+                    assert_eq!(px(width) - second.right(), px(5.0));
+                    assert_eq!(px(height) - second.bottom(), px(5.0));
+                    let gutter = match direction {
+                        SplitDirection::Horizontal => second.left() - first.right(),
+                        SplitDirection::Vertical => second.top() - first.bottom(),
+                    };
+                    assert_eq!(gutter, px(5.0));
+                });
+            }
+        }
     }
 
     struct PaneHeaderTestView {

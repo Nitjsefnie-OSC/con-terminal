@@ -369,11 +369,12 @@ impl Render for ConWorkspace {
         let input_bar_progress = self.input_bar_motion.value(window, cx);
         #[cfg(target_os = "macos")]
         let canvas_depth = {
-            let depth = if self.horizontal_tabs_visible() {
-                1.0
-            } else {
-                left_panel_progress.max(agent_panel_progress)
-            };
+            let depth = frame::canvas_depth_for_layout(
+                self.horizontal_tabs_visible(),
+                self.has_active_tab() && self.tabs[self.active_tab].pane_tree.pane_count() > 1,
+                left_panel_progress,
+                agent_panel_progress,
+            );
             self.canvas_depth_progress = depth;
             depth
         };

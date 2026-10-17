@@ -4777,7 +4777,7 @@ impl Render for AgentPanel {
             #[cfg(target_os = "macos")]
             let header = header
                 .w_auto()
-                .mx(px(crate::workspace::frame::CANVAS_INSET));
+                .mx(px(crate::workspace::frame::AGENT_CONTENT_INSET));
             header
         });
 
@@ -4909,7 +4909,7 @@ impl Render for AgentPanel {
                     .min_h_0()
                     .map(|content| {
                         #[cfg(target_os = "macos")]
-                        let content = content.mx(px(crate::workspace::frame::CANVAS_INSET));
+                        let content = content.mx(px(crate::workspace::frame::AGENT_CONTENT_INSET));
                         content
                     })
                     .child(
@@ -4944,7 +4944,7 @@ impl Render for AgentPanel {
                 .min_h_0()
                 .map(|content| {
                     #[cfg(target_os = "macos")]
-                    let content = content.mx(px(crate::workspace::frame::CANVAS_INSET));
+                    let content = content.mx(px(crate::workspace::frame::AGENT_CONTENT_INSET));
                     content
                 })
                 .child(transcript_surface);
@@ -5763,7 +5763,7 @@ mod tests {
                 let header = view.debug_bounds("agent-header").unwrap();
                 assert_eq!(
                     header.left(),
-                    gpui::px(crate::workspace::frame::CANVAS_INSET)
+                    gpui::px(crate::workspace::frame::AGENT_CONTENT_INSET)
                 );
                 assert_eq!(transcript.left(), header.left());
             }

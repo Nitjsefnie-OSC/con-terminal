@@ -3,9 +3,9 @@
 ## Visual hierarchy
 
 On macOS, workspaces with sidebars or multiple tabs use an inset terminal
-canvas with 2pt of breathing room. Its native viewport stays rectangular;
+canvas with 3pt of breathing room. Its native viewport stays rectangular;
 rounded corners belong to the terminal cards, not a second enclosing mask. Terminal cards,
-including a single pane, use 3pt insets and the same 8pt corners within that
+including a single pane, use 2pt insets and the same 8pt corners within that
 canvas. In clean mode, a single terminal returns to zero inset and zero radius.
 Horizontal tabs already include bottom clearance inside their fixed-height row.
 Subtract that clearance from the canvas's top margin as the strip appears, so
@@ -29,9 +29,10 @@ design, not permission to frame every control.
 Pane titles align to the leading edge and surface tabs use the UI font, without
 a nested track or redundant surface count. Their close and rename actions stay
 in the same pane-local scope.
-Resize feedback uses a centered 2pt by 28pt rounded grip within the 7pt gutter,
+Resize feedback uses a centered 2pt by 28pt rounded grip within the 5pt gutter,
 not a full-length active line. It appears on hover and stays visible while
-dragging without changing geometry. The full gutter remains draggable; small
+dragging without changing geometry. Its centered 7pt hit target is independent
+of the visible gutter width and remains unchanged; small
 panes shorten the grip rather than overflowing their shared edge.
 
 The agent panel is base chrome, like the left sidebar: no enclosing frame,
@@ -56,9 +57,12 @@ and the card scrolls rather than silently dropping pane details.
 
 The input tray spans the terminal column and aligns with the pane cards, with
 5pt total horizontal inset and 8pt corners. Pane-to-pane, pane-to-tray and
-tray-to-window-bottom gaps are all 7pt at the decorated endpoint. The existing
-1pt split divider plus two 3pt pane insets define that rhythm. The tray sits
-5pt above the inner canvas bottom, plus the 2pt canvas inset. It is not a
+tray-to-window-bottom gaps are all 5pt at the decorated endpoint, matching
+the visible outer clearance and agent-composer margins. The existing
+1pt split divider plus two 2pt pane insets define that rhythm. The tray sits
+2pt above the inner canvas bottom, plus the 3pt canvas inset. A 44pt tray
+reserves 49pt once throughout its reveal. Its content height stays unchanged.
+It is not a
 centered, capped-width field inside a full-width terminal-colored strip.
 Its popovers share that geometry. The tray uses a lifted Window Chrome fill;
 the space around it belongs to the workspace, not a second native terminal
@@ -78,9 +82,11 @@ padding API. The tray must not hide the final terminal row at rest.
 The pinned GPUI view-cache key does not include inherited opacity, so input
 caching is used only at the settled, fully opaque endpoint.
 
-One tab with both sidebars hidden returns to the original clean terminal:
+One tab with one pane and both sidebars hidden returns to the original clean terminal:
 no canvas inset, no corner mask and no input-island margin. These dimensions
 follow sidebar motion continuously rather than snapping when a boolean changes.
+Split panes keep the decorated canvas even without sidebars or additional tabs,
+so their outer clearance cannot collapse below the gap between their cards.
 
 Expanded vertical navigation owns the macOS caption controls. The toolbar
 occupies its top row while the global caption row gives its height back to
@@ -132,7 +138,7 @@ padding. This is loaded before the user's native configuration, not as immutable
 host policy. An explicit `background` or `extend-always` choice stays effective.
 Ghostty's own prompt/powerline safeguards remain in charge; Con does not sample
 terminal pixels or repaint program backgrounds in GPUI.
-Drop regions follow the same 3pt inset and 8pt corners as pane cards. Their
+Drop regions follow the same 2pt inset and 8pt corners as pane cards. Their
 bounds deduct every 1pt split divider. Resizing retains the full gutter hit
 target and shows the short centered grip described above, not a full-height bar.
 

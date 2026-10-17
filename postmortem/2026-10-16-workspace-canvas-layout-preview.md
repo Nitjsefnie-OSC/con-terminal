@@ -393,3 +393,26 @@ identity mapping and bundled glyph coverage now run on native Windows/Linux CI.
 The macOS canvas does not replace those platforms' terminal layout paths.
 This acceptance is not a frame-rate benchmark or certification of the intermittent
 internal-display/battery presentation seam; retain that separate acceptance work.
+
+### Equal visible gutters after beta.139
+
+The pane split combined two 3pt leaf insets and a 1pt divider into a 7pt gap,
+while the visible outside clearance and composer margins were 5pt. Matching the
+tray to the split alone had not made the whole workspace consistent. Derive
+leaf and canvas insets from a single 5pt gap: 2pt per leaf beside the divider,
+and 3pt canvas plus 2pt leaf at the exterior. The decorated outer card edges
+therefore stay in place. Tray clearance follows the same 5pt rhythm and a 44pt
+tray reserves 49pt instead of 53pt. Agent text retains its independent 2pt inset.
+The centered resize target remains 7pt; it is not derived from the visual gap.
+Native presentation synchronization, corner masks and portable layout paths are
+unchanged. Regression coverage checks real leaf clip bounds in both split axes,
+outer clearance, composer baselines and resize clicks outside the visible grip.
+Splits also retain decorated outer clearance with one tab and hidden sidebars;
+only a single pane can enter the zero-inset clean layout. The prior decoration
+policy ignored pane count and would otherwise leave a narrower outer margin.
+
+Verification: all 652 app tests, strict Clippy, formatting, docs manifest and diff
+checks passed, and the app built successfully. The light-theme Gutter Preview
+shows matching visible pane, tray and window clearances. Both split axes and the
+unchanged 7pt resize target are covered by linked layout/interaction tests;
+manual native divider-drag acceptance and dark/portable runtime remain unverified.

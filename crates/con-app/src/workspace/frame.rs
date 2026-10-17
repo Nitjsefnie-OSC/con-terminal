@@ -2,13 +2,30 @@ use gpui::{Bounds, Hsla, IntoElement, PathBuilder, Pixels, Styled, Window, point
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub(crate) const CANVAS_INSET: f32 = 2.0;
-pub(crate) const PANE_INSET: f32 = 3.0;
+// A split includes its 1pt divider; exterior canvas + pane padding must match it.
+pub(crate) const CARD_GAP: f32 = 5.0;
+pub(crate) const PANE_INSET: f32 = (CARD_GAP - 1.0) * 0.5;
+pub(crate) const CANVAS_INSET: f32 = CARD_GAP - PANE_INSET;
+pub(crate) const AGENT_CONTENT_INSET: f32 = 2.0;
+// Keep the resize target wider than its visible gutter without shifting its center.
+pub(crate) const PANE_RESIZE_HIT_WIDTH: f32 = 7.0;
 pub(crate) const PANE_RADIUS: f32 = 8.0;
 pub(crate) const CARD_OUTER_INSET: f32 = CANVAS_INSET + PANE_INSET;
-pub(crate) const CARD_GAP: f32 = 2.0 * PANE_INSET + 1.0;
 pub(super) const INPUT_BOTTOM_INSET: f32 = CARD_GAP - CANVAS_INSET;
 pub(super) const INPUT_RADIUS: f32 = PANE_RADIUS;
+
+pub(super) fn canvas_depth_for_layout(
+    horizontal_tabs: bool,
+    split_panes: bool,
+    left_panel: f32,
+    agent_panel: f32,
+) -> f32 {
+    if horizontal_tabs || split_panes {
+        1.0
+    } else {
+        left_panel.max(agent_panel)
+    }
+}
 
 pub(super) fn canvas_top_inset(depth: f32, horizontal_tabs: f32) -> f32 {
     let tab_bottom_clearance = (super::TOP_BAR_TABS_HEIGHT - super::TOP_BAR_TAB_HEIGHT) * 0.5;
@@ -602,7 +619,7 @@ mod tests {
         }
         assert_eq!(input_island_geometry(1600.0, 1.0), (5.0, 1590.0));
         assert_eq!(input_island_geometry(900.0, 1.0), (5.0, 890.0));
-        assert_eq!(input_safe_height(44.0, 1.0, 1.0), 53.0);
+        assert_eq!(input_safe_height(44.0, 1.0, 1.0), 49.0);
         assert_eq!(input_safe_height(44.0, 0.0, 1.0), 0.0);
     }
 
@@ -614,9 +631,10 @@ mod tests {
             let pane_bottom = window_bottom - CANVAS_INSET - reserved - PANE_INSET;
             let tray_bottom = window_bottom - CANVAS_INSET - INPUT_BOTTOM_INSET;
             let tray_top = tray_bottom - height;
-            assert_eq!(tray_top - pane_bottom, 7.0);
-            assert_eq!(window_bottom - tray_bottom, 7.0);
+            assert_eq!(tray_top - pane_bottom, 5.0);
+            assert_eq!(window_bottom - tray_bottom, 5.0);
             assert_eq!(2.0 * PANE_INSET + 1.0, tray_top - pane_bottom);
+            assert_eq!(CARD_OUTER_INSET, tray_top - pane_bottom);
 
             for split in [false, true] {
                 for input_height in [0.0, reserved] {
@@ -624,6 +642,26 @@ mod tests {
                     let terminal_bottom = window_bottom - CANVAS_INSET - input_height - PANE_INSET;
                     assert_eq!(window_bottom - padding_bottom, terminal_bottom);
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn split_panes_keep_outer_clearance_without_sidebars_or_extra_tabs() {
+        for (tabs, split, left, right, expected) in [
+            (false, false, 0.0, 0.0, 0.0),
+            (false, false, 0.2, 0.7, 0.7),
+            (true, false, 0.0, 0.0, 1.0),
+            (false, true, 0.0, 0.0, 1.0),
+            (false, true, 0.4, 0.2, 1.0),
+        ] {
+            let depth = canvas_depth_for_layout(tabs, split, left, right);
+            assert_eq!(depth, expected);
+            if split {
+                assert_eq!(
+                    CANVAS_INSET * depth + pane_card_geometry(split, depth).0,
+                    5.0
+                );
             }
         }
     }
@@ -704,7 +742,7 @@ mod tests {
             });
             assert_eq!(cx.debug_bounds("fixed-composer").unwrap(), fixed);
             let clip = cx.debug_bounds("input-reveal-clip").unwrap();
-            assert_eq!(clip.bottom(), px(59.0));
+            assert_eq!(clip.bottom(), px(62.0));
             assert_eq!(clip.size.height, px(44.0));
         }
     }
@@ -763,12 +801,12 @@ mod tests {
         cx.simulate_resize(size(px(500.0), px(400.0)));
         let island = cx.debug_bounds("island-frame").unwrap();
         for (progress, visible, expected_output) in [
-            (0.1, true, 247.0),
-            (0.7, true, 247.0),
-            (1.0, true, 247.0),
-            (0.6, false, 247.0),
-            (0.8, true, 247.0),
-            (1.0, true, 247.0),
+            (0.1, true, 251.0),
+            (0.7, true, 251.0),
+            (1.0, true, 251.0),
+            (0.6, false, 251.0),
+            (0.8, true, 251.0),
+            (1.0, true, 251.0),
             (0.0, false, 300.0),
         ] {
             view.update(cx, |view, cx| {
