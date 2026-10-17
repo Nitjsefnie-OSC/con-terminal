@@ -624,7 +624,7 @@ impl ConWorkspace {
             } else {
                 (None, Some(tab.title.clone()), None)
             };
-        let presentation = smart_tab_presentation(
+        let mut presentation = smart_tab_presentation(
             tab.user_label.as_deref(),
             tab.ai_label.as_deref(),
             tab.ai_icon.map(|k| k.svg_path()),
@@ -635,6 +635,13 @@ impl ConWorkspace {
             index,
             pane_count == 0,
         );
+        if !presentation.is_ssh
+            && tab.agent_cli.is_none()
+            && let Some(terminal) = tab.pane_tree.try_focused_terminal()
+            && terminal.presentation_icon() != crate::terminal_identity::TERMINAL
+        {
+            presentation.icon = terminal.presentation_icon();
+        }
         SessionEntry {
             id: tab.summary_id,
             name: presentation.name,

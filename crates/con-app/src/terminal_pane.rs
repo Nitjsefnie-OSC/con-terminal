@@ -14,6 +14,7 @@ use crate::workspace::ConWorkspace;
 #[derive(Clone)]
 pub struct TerminalPane {
     entity: Entity<GhosttyView>,
+    presentation_icon: std::rc::Rc<std::cell::Cell<&'static str>>,
     #[cfg(target_os = "macos")]
     pane_surround: crate::workspace::frame::PaneSurround,
 }
@@ -22,9 +23,20 @@ impl TerminalPane {
     pub fn new(entity: Entity<GhosttyView>) -> Self {
         Self {
             entity,
+            presentation_icon: std::rc::Rc::new(std::cell::Cell::new(
+                crate::terminal_identity::TERMINAL,
+            )),
             #[cfg(target_os = "macos")]
             pane_surround: Default::default(),
         }
+    }
+
+    pub(crate) fn presentation_icon(&self) -> &'static str {
+        self.presentation_icon.get()
+    }
+
+    pub(crate) fn set_presentation_icon(&self, icon: &'static str) -> bool {
+        self.presentation_icon.replace(icon) != icon
     }
 
     #[cfg(target_os = "macos")]

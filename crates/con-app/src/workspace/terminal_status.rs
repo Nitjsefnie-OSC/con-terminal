@@ -484,13 +484,32 @@ impl ConWorkspace {
         let mut changed = state.presented_focus != focus;
         state.presented_focus = focus;
         for (index, tab) in self.tabs.iter_mut().enumerate() {
+            let terminals = tab.pane_tree.all_surface_terminals();
+            for terminal in &terminals {
+                let icon = state.surfaces.get(&terminal.entity_id().as_u64()).map_or(
+                    crate::terminal_identity::TERMINAL,
+                    |surface| {
+                        surface
+                            .status
+                            .identity()
+                            .and_then(|identity| agent_cli_icon(Some(identity.agent)))
+                            .unwrap_or_else(|| {
+                                crate::terminal_identity::from_processes(
+                                    surface
+                                        .processes
+                                        .iter()
+                                        .map(|process| process.identity.name.as_str()),
+                                )
+                            })
+                    },
+                );
+                changed |= terminal.set_presentation_icon(icon);
+            }
             let focused = tab
                 .pane_tree
                 .focused_terminal_entity_id()
                 .map(|id| id.as_u64());
-            let mut statuses: Vec<_> = tab
-                .pane_tree
-                .all_surface_terminals()
+            let mut statuses: Vec<_> = terminals
                 .iter()
                 .filter_map(|terminal| state.surfaces.get(&terminal.entity_id().as_u64()))
                 .filter_map(|surface| surface.status.status(now))

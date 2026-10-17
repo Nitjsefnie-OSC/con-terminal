@@ -30,6 +30,7 @@ mod macos_windowing;
 mod quick_terminal;
 #[cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))]
 mod terminal_find;
+mod terminal_identity;
 
 // The terminal-view module is selected per platform:
 //   macOS   -> ghostty_view.rs (libghostty + child NSView)

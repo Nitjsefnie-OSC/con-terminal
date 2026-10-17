@@ -114,8 +114,21 @@ pub(crate) fn tab_identity_icon(
     size: gpui::Pixels,
     color: gpui::Hsla,
 ) -> gpui::AnyElement {
-    use gpui::{IntoElement, Styled, StyledImage};
-    if path.ends_with(".png") {
+    use gpui::{IntoElement, ParentElement, Styled, StyledImage};
+    if let Some(glyph) = crate::terminal_identity::glyph(path) {
+        gpui::div()
+            .size(size)
+            .flex_shrink_0()
+            .flex()
+            .items_center()
+            .justify_center()
+            .font_family(crate::file_icons::FILE_ICON_FONT_FAMILY)
+            .text_size(size)
+            .line_height(size)
+            .text_color(crate::terminal_identity::color(path))
+            .child(SharedString::from(glyph.to_string()))
+            .into_any_element()
+    } else if path.ends_with(".png") {
         gpui::img(png_preview(path, size.as_f32()))
             .size(size)
             .object_fit(gpui::ObjectFit::Contain)
