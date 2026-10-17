@@ -252,6 +252,26 @@ Tail A6 PNG was copied byte-for-byte (SHA-256 verified), and the preview ICNS wa
 generated from it through the packaging resize sizes. Portable runtime, a dark
 app theme and high-speed motion remain unverified.
 
+Single-pane feedback found another ownership mismatch: only split leaves had
+their own rounded card clip, while the outer canvas clip included the input-tray
+reservation. A single terminal's bottom therefore stayed square. Canvas depth is
+now passed explicitly through pane rendering; a single decorated leaf gets the
+same card geometry as split leaves, while clean mode still clears the clip. The
+linked single-pane test covers both transitions and checks actual clip bounds.
+The enclosing native viewport is now rectangular: it reserves layout space,
+while leaves alone own the rounded contour. Painting another set of enclosing
+corner cutouts over leaf cutouts would duplicate antialiasing and material fills.
+
+Compact icon containers were centered, but font-glyph ink did not match the
+transparent inset baked into the bitmap identities. Font identities now fit
+their actual bundled ink bounds to an 80% optical slot and center that ink using
+the shaped line's baseline, not guessed per-icon offsets. No new icon library
+or installed-font scan is involved. The right panel returns to unframed base
+chrome, with only its composer raised. Terminal-card shading is removed; hover
+details use a distinct opaque popover material and grouped pane context. The
+visual pass replaced an inset pane-context fill that resembled a button with
+a faint separator, and matched the agent composer's material to the input tray.
+
 ### Input tray feedback
 
 The centered 800pt field and native safe-area extension still read as two
@@ -279,3 +299,13 @@ an inset strip a floating composer or treat a unit-test count as visual approval
 Use small cached corner paths, never a viewport-sized path with a hole. Keep
 native material ownership confined to the reserved area; do not solve seams by
 making the entire terminal opaque.
+
+The final single-pane/sidebar revision passed 64 focused macOS tests (including
+linked native clip bounds), strict Clippy, formatting, diff checks and the app
+build. The Unified preview was rebuilt and visually inspected in the configured
+light theme. Composer typing and clearing were exercised without submitting a
+message. The right sidebar has one base-material owner, not two overlapping
+alpha fills. Windows/Linux runtime, dark-theme runtime, high-speed presentation
+and frame-rate measurements remain unverified; these results are not acceptance
+of those cases. Production sessions and the user's edited source artwork were
+not modified by this validation.

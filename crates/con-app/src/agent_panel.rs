@@ -5052,6 +5052,7 @@ impl Render for AgentPanel {
                     .child(
                         div()
                             .debug_selector(|| "agent-composer-surface".into())
+                            .relative()
                             .flex()
                             .items_end()
                             .w_full()
@@ -5091,7 +5092,34 @@ impl Render for AgentPanel {
                                         ),
                                     ),
                             )
-                            .child(send_button),
+                            .child(send_button)
+                            .map(|surface| {
+                                #[cfg(target_os = "macos")]
+                                {
+                                    surface
+                                        .bg(theme.title_bar.blend(if theme.is_dark() {
+                                            theme.foreground.opacity(0.10)
+                                        } else {
+                                            gpui::white().opacity(0.55)
+                                        }))
+                                        .child(
+                                            crate::workspace::frame::surface_edge(
+                                                mono_space_px(theme, 12.0).as_f32(),
+                                                theme.foreground.opacity(if theme.is_dark() {
+                                                    0.12
+                                                } else {
+                                                    0.075
+                                                }),
+                                                true,
+                                            )
+                                            .inset_0(),
+                                        )
+                                }
+                                #[cfg(not(target_os = "macos"))]
+                                {
+                                    surface
+                                }
+                            }),
                     ),
             );
         }

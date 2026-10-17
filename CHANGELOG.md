@@ -13,7 +13,8 @@ con is still pre-release, so entries may group related beta work while the produ
 - Tabs and surfaces recognize common editors, language runtimes and developer
   tools through their retained process observations, with colored application
   identities. Unknown programs keep the terminal icon; terminal output does not
-  determine application identity.
+  determine application identity. Font-based identities use matched optical
+  sizing and centering alongside the existing bitmap icons.
 
 **App Icon**
 
@@ -28,17 +29,17 @@ con is still pre-release, so entries may group related beta work while the produ
   takes less vertical space, and the input tray fades in place rather than
   sliding the terminal on every animation frame.
   A single tab without sidebars keeps the clean, edge-to-edge terminal layout.
-- Split panes and the agent panel share the canvas's quiet, rounded treatment
-  on macOS. Surface tabs use clearer labels, and compact-tab details stay in a
-  stable, readable hover card.
+- Single and split terminals share quiet rounded edges on macOS. The agent
+  panel stays unframed, with a raised composer. Surface tabs use clearer labels,
+  and compact-tab details use a stable popover with grouped pane context.
 - The floating input bar fades its background and controls together, without
   first opening a separate empty strip. Pane clipping also recovers when native
   backing layers change without a layout-size change.
 - Dragging a pane keeps vertical tabs in the sidebar instead of briefly opening
   a horizontal strip. Pane drag labels, tab details and the floating command
   bar use a more compact, consistent layout.
-- Pane headers share application identities with tab navigation. Panes and the
-  input tray use restrained fine edges and short contact shadows. Files and
+- Pane headers share application identities with tab navigation. Pane cards use
+  fine edges; input surfaces use short contact shadows. Files and
   Search also give terminal content the top row when the left column has room
   for the window controls.
 

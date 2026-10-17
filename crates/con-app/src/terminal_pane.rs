@@ -40,8 +40,8 @@ impl TerminalPane {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn pane_surround(&self, color: Hsla) -> impl IntoElement + use<> {
-        self.pane_surround.render(color)
+    pub fn pane_surround(&self, color: Hsla, depth: f32) -> impl IntoElement + use<> {
+        self.pane_surround.render(color, depth)
     }
 
     pub fn title(&self, cx: &App) -> Option<String> {

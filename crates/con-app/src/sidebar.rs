@@ -42,7 +42,7 @@ pub const PANEL_MIN_WIDTH: f32 = 184.0;
 pub const PANEL_MAX_WIDTH: f32 = 360.0;
 /// Compact details next to a rail tile; long paths wrap within this width.
 #[allow(dead_code)]
-const HOVER_CARD_WIDTH: f32 = 216.0;
+const HOVER_CARD_WIDTH: f32 = 232.0;
 /// Single-line tabs keep the expanded navigator as light as the compact rail.
 const ROW_HEIGHT: f32 = 32.0;
 const ROW_SELECTION_INSET: f32 = 3.0;
@@ -1281,14 +1281,7 @@ impl SessionSidebar {
         }
         let session = self.sessions.get(i)?;
         let theme = cx.theme();
-        let bg = theme
-            .background
-            .blend(
-                theme
-                    .foreground
-                    .opacity(if theme.is_dark() { 0.08 } else { 0.035 }),
-            )
-            .opacity(1.0);
+        let bg = theme.popover.opacity(1.0);
         let cursor = window.mouse_position();
         let anchor_y = self
             .tab_bounds
@@ -1317,8 +1310,8 @@ impl SessionSidebar {
                     .items_center()
                     .gap(px(8.0))
                     .child(crate::assets::tab_identity_icon(
-                        session.icon,
-                        ui_px(theme, 14.0),
+                        sidebar_tab_icon(session.icon),
+                        ui_px(theme, 18.0),
                         theme.foreground,
                     ))
                     .child(
@@ -1338,7 +1331,7 @@ impl SessionSidebar {
                             div()
                                 .debug_selector(|| "tab-hover-pane-count".into())
                                 .flex_shrink_0()
-                                .text_size(ui_px(theme, 10.0))
+                                .text_size(ui_px(theme, 11.0))
                                 .text_color(meta_color)
                                 .child(format!("{} panes", session.pane_count)),
                         )
@@ -1372,7 +1365,19 @@ impl SessionSidebar {
             })
             .collect();
         if !terminal_titles.is_empty() {
-            let mut titles = div().flex().flex_col().flex_shrink_0().mt(px(8.0));
+            let mut titles = div()
+                .flex()
+                .flex_col()
+                .flex_shrink_0()
+                .mt(px(8.0))
+                .gap(px(4.0))
+                .child(
+                    div()
+                        .h(px(0.5))
+                        .w_full()
+                        .mb(px(4.0))
+                        .bg(theme.foreground.opacity(0.08)),
+                );
             for title in terminal_titles {
                 titles = titles.child(
                     div()
@@ -1439,8 +1444,8 @@ impl SessionSidebar {
             .w(px(HOVER_CARD_WIDTH.min(
                 (window.viewport_size().width.as_f32() - RAIL_WIDTH - 14.0).max(1.0),
             )))
-            .rounded(px(8.0))
-            .overflow_hidden()
+            .relative()
+            .rounded(px(10.0))
             .bg(bg)
             .occlude()
             .child(
@@ -1448,7 +1453,26 @@ impl SessionSidebar {
                     .id("tab-title-details")
                     .max_h(px(max_height))
                     .overflow_y_scroll(),
-            );
+            )
+            .map(|card| {
+                #[cfg(target_os = "macos")]
+                {
+                    card.child(
+                        crate::workspace::frame::surface_edge(
+                            10.0,
+                            theme
+                                .foreground
+                                .opacity(if theme.is_dark() { 0.12 } else { 0.075 }),
+                            true,
+                        )
+                        .inset_0(),
+                    )
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    card
+                }
+            });
 
         // Let GPUI fit the measured card, including wrapped paths, instead
         // of estimating its height from character counts or line counts.

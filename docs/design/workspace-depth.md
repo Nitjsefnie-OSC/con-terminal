@@ -3,15 +3,18 @@
 ## Visual hierarchy
 
 On macOS, workspaces with sidebars or multiple tabs use an inset terminal
-canvas. It has 2pt of breathing room and 8pt outer corners. Split panes use 3pt
-insets and the same 8pt corners within that canvas. The original divider hit
+canvas with 2pt of breathing room. Its native viewport stays rectangular;
+rounded corners belong to the terminal cards, not a second enclosing mask. Terminal cards,
+including a single pane, use 3pt insets and the same 8pt corners within that
+canvas. In clean mode, a single terminal returns to zero inset and zero radius.
+The original divider hit
 targets remain available between them. Following maintainer feedback on 2026-10-17,
 this prototype uses restrained, one-physical-pixel outlines on panes, the input
-tray and the agent panel. Panes and the tray add a short contact shade directed
+tray. Terminal cards use a fine edge without extra dark corner shading. The
+input tray, agent composer and hover details add a short contact shade directed
 toward the lower right. Three exterior contour bands fade over three physical
 pixels; they share the surface's inner rounded boundary. This avoids hard
-rectangular cutoffs through the corner penumbra. The anchored agent panel
-shares the fine edge but not the elevation. The outer canvas has no additional
+rectangular cutoffs through the corner penumbra. The outer canvas has no additional
 outline.
 Transparent quad paint is clipped to narrow perimeter regions before
 rasterization; contact shading uses small corner masks and narrow side masks.
@@ -22,13 +25,15 @@ Pane titles align to the leading edge and surface tabs use the UI font, without
 a nested track or redundant surface count. Their close and rename actions stay
 in the same pane-local scope.
 
-The agent panel aligns its top with the terminal cards (2pt canvas inset plus
-3pt for split panes) and its bottom with the visible input tray, or the terminal
-cards when the tray is hidden. It uses the same 8pt outer rounding. Its header,
-conversation and composer belong to one clipped surface, not separate frames.
+The agent panel is base chrome, like the left sidebar: no enclosing frame,
+rounded card fill or shadow. Its content aligns with terminal-card and input-tray
+endpoints; only its composer is raised. Do not nest the conversation inside a
+second floating card.
 Compact-tab details use a stable tile anchor and one opaque, rounded material.
 The title and identity icon share one row, with the pane count at its trailing
 edge; the path follows below. Keep 12pt horizontal and 10pt vertical padding.
+Use an opaque popover material with a quiet edge, and separate other pane titles
+with a faint rule rather than adding another button-like card inside the popover.
 SSH and unread state use a separate footer only when present. Long paths wrap
 and the card scrolls rather than silently dropping pane details.
 
@@ -95,6 +100,10 @@ Common editors and runtime ecosystems use the already bundled Nerd Font, just
 like language identities in the file tree; actions continue to use Phosphor.
 Application identities use restrained application-tinted colors across themes;
 unknown shells retain the shared terminal identity rather than a random logo.
+Font identities are optically normalized to 80% of their slot from the bundled
+glyph's ink bounds, then centered by ink rather than its monospace advance cell.
+The face is parsed once and GPUI retains shaped lines; do not add per-frame font
+file reads or application/process queries to draw icons.
 These are presentation facts, never authority for agent execution or control.
 
 The embedded macOS renderer defaults to Ghostty's `window-padding-color = extend`

@@ -1120,6 +1120,7 @@ impl PaneTree {
         tab_accent_color: Option<con_core::session::TabAccentColor>,
         tab_accent_inactive_alpha: f32,
         hide_pane_title_bar: bool,
+        canvas_depth: f32,
         cx: &App,
     ) -> AnyElement {
         let focus_surface_cb = std::sync::Arc::new(focus_surface_cb);
@@ -1152,6 +1153,7 @@ impl PaneTree {
                 tab_accent_color,
                 tab_accent_inactive_alpha,
                 hide_pane_title_bar,
+                canvas_depth,
                 cx,
             )
         {
@@ -1178,6 +1180,7 @@ impl PaneTree {
             tab_accent_color,
             tab_accent_inactive_alpha,
             hide_pane_title_bar,
+            canvas_depth,
             cx,
         )
     }
@@ -1943,6 +1946,7 @@ impl PaneTree {
         tab_accent_color: Option<con_core::session::TabAccentColor>,
         tab_accent_inactive_alpha: f32,
         hide_pane_title_bar: bool,
+        canvas_depth: f32,
         cx: &App,
     ) -> AnyElement {
         match node {
@@ -1966,6 +1970,7 @@ impl PaneTree {
                 tab_accent_color,
                 tab_accent_inactive_alpha,
                 hide_pane_title_bar,
+                canvas_depth,
                 cx,
             ),
             PaneNode::Split {
@@ -2017,6 +2022,7 @@ impl PaneTree {
                     tab_accent_color,
                     tab_accent_inactive_alpha,
                     hide_pane_title_bar,
+                    canvas_depth,
                     cx,
                 );
                 let second_el = Self::render_node(
@@ -2039,6 +2045,7 @@ impl PaneTree {
                     tab_accent_color,
                     tab_accent_inactive_alpha,
                     hide_pane_title_bar,
+                    canvas_depth,
                     cx,
                 );
 
@@ -2187,6 +2194,7 @@ impl PaneTree {
         tab_accent_color: Option<con_core::session::TabAccentColor>,
         tab_accent_inactive_alpha: f32,
         hide_pane_title_bar: bool,
+        canvas_depth: f32,
         cx: &App,
     ) -> Option<AnyElement> {
         match node {
@@ -2210,6 +2218,7 @@ impl PaneTree {
                 tab_accent_color,
                 tab_accent_inactive_alpha,
                 hide_pane_title_bar,
+                canvas_depth,
                 cx,
             )),
             PaneNode::Leaf { .. } => None,
@@ -2231,6 +2240,7 @@ impl PaneTree {
                 tab_accent_color,
                 tab_accent_inactive_alpha,
                 hide_pane_title_bar,
+                canvas_depth,
                 cx,
             )
             .or_else(|| {
@@ -2252,6 +2262,7 @@ impl PaneTree {
                     tab_accent_color,
                     tab_accent_inactive_alpha,
                     hide_pane_title_bar,
+                    canvas_depth,
                     cx,
                 )
             }),
@@ -2855,6 +2866,7 @@ impl PaneTree {
         tab_accent_color: Option<con_core::session::TabAccentColor>,
         tab_accent_inactive_alpha: f32,
         hide_pane_title_bar: bool,
+        _canvas_depth: f32,
         cx: &App,
     ) -> AnyElement {
         // ── Editor pane — file tabs and pane controls share one row ───────
@@ -3179,7 +3191,18 @@ impl PaneTree {
                     #[cfg(target_os = "macos")]
                     {
                         bar.relative()
-                            .child(crate::workspace::frame::header_background(strip_bg))
+                            .child(crate::workspace::frame::pane_header_background(
+                                strip_bg,
+                                if tree_has_splits && !hide_pane_title_bar {
+                                    0.0
+                                } else {
+                                    crate::workspace::frame::pane_card_geometry(
+                                        tree_has_splits,
+                                        _canvas_depth,
+                                    )
+                                    .1
+                                },
+                            ))
                     }
                     #[cfg(not(target_os = "macos"))]
                     {
@@ -3198,11 +3221,8 @@ impl PaneTree {
                 .iter()
                 .map(|surface| surface.terminal.clone())
                 .collect::<Vec<_>>();
-            let radius = if tree_has_splits {
-                crate::workspace::frame::PANE_RADIUS
-            } else {
-                0.0
-            };
+            let (inset, radius) =
+                crate::workspace::frame::pane_card_geometry(tree_has_splits, _canvas_depth);
             let pane = col
                 .relative()
                 .id(("terminal-pane-card", pane_id))
@@ -3214,18 +3234,17 @@ impl PaneTree {
             div()
                 .relative()
                 .size_full()
-                .p(px(if tree_has_splits {
-                    crate::workspace::frame::PANE_INSET
-                } else {
-                    0.0
-                }))
+                .p(px(inset))
                 .child(pane)
-                .when(tree_has_splits, |container| {
+                .when(radius > 0.0, |container| {
                     container
-                        .child(active.terminal.pane_surround(_surround_color))
+                        .child(active.terminal.pane_surround(
+                            _surround_color,
+                            radius / crate::workspace::frame::PANE_RADIUS,
+                        ))
                         .child(
                             crate::workspace::frame::surface_edge(
-                                crate::workspace::frame::PANE_RADIUS,
+                                radius,
                                 theme
                                     .foreground
                                     .opacity(match (theme.is_dark(), is_focused) {
@@ -3234,9 +3253,9 @@ impl PaneTree {
                                         (false, true) => 0.09,
                                         (false, false) => 0.055,
                                     }),
-                                true,
+                                false,
                             )
-                            .inset(px(crate::workspace::frame::PANE_INSET)),
+                            .inset(px(inset)),
                         )
                 })
                 .into_any_element()
@@ -3660,6 +3679,7 @@ mod tests {
     struct SinglePaneClipTestView {
         tree: PaneTree,
         terminal: Entity<crate::ghostty_view::GhosttyView>,
+        canvas_depth: f32,
     }
 
     #[cfg(target_os = "macos")]
@@ -3680,6 +3700,7 @@ mod tests {
                 None,
                 0.08,
                 false,
+                self.canvas_depth,
                 cx,
             )
         }
@@ -3708,6 +3729,7 @@ mod tests {
             SinglePaneClipTestView {
                 tree: PaneTree::new(pane),
                 terminal,
+                canvas_depth: 0.0,
             }
         });
         cx.simulate_resize(size(px(600.0), px(400.0)));
@@ -3721,6 +3743,18 @@ mod tests {
             assert_eq!(
                 bounds,
                 Bounds::new(point(px(0.0), px(0.0)), size(px(600.0), px(400.0)))
+            );
+        });
+        view.update(cx, |view, cx| {
+            view.canvas_depth = 1.0;
+            cx.notify();
+        });
+        view.read_with(cx, |view, cx| {
+            let (bounds, radius) = view.terminal.read(cx).pane_clip_for_test().unwrap();
+            assert_eq!(radius, crate::workspace::frame::PANE_RADIUS);
+            assert_eq!(
+                bounds,
+                Bounds::new(point(px(3.0), px(3.0)), size(px(594.0), px(394.0)))
             );
         });
     }

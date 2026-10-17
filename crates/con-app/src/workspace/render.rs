@@ -493,6 +493,7 @@ impl Render for ConWorkspace {
         // edges are decoration, not the native transition/drag seam covers.
         // A slight material step makes the panel's header readable even
         // when the compact titlebar and desktop backdrop are both light.
+        #[cfg(not(target_os = "macos"))]
         let agent_panel_surface_color =
             top_bar_surface_color.blend(theme.foreground.opacity(if theme.is_dark() {
                 0.025
@@ -644,6 +645,16 @@ impl Render for ConWorkspace {
                 tab_accent_color,
                 self.tab_accent_inactive_alpha,
                 self.hide_pane_title_bar,
+                {
+                    #[cfg(target_os = "macos")]
+                    {
+                        canvas_depth
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        0.0
+                    }
+                },
                 cx,
             )
         };
@@ -1200,11 +1211,7 @@ impl Render for ConWorkspace {
                             .map(|panel| {
                                 #[cfg(target_os = "macos")]
                                 {
-                                    panel
-                                        .relative()
-                                        .rounded(px(frame::CANVAS_RADIUS))
-                                        .overflow_hidden()
-                                        .bg(agent_panel_surface_color)
+                                    panel.relative().overflow_hidden()
                                 }
                                 #[cfg(not(target_os = "macos"))]
                                 {
@@ -1216,28 +1223,7 @@ impl Render for ConWorkspace {
                                     .clone()
                                     .cached(StyleRefinement::default().size_full())
                                     .into_any_element(),
-                            )
-                            .map(|panel| {
-                                #[cfg(target_os = "macos")]
-                                {
-                                    panel.child(
-                                        frame::surface_edge(
-                                            frame::CANVAS_RADIUS,
-                                            theme.foreground.opacity(if theme.is_dark() {
-                                                0.10
-                                            } else {
-                                                0.065
-                                            }),
-                                            false,
-                                        )
-                                        .inset_0(),
-                                    )
-                                }
-                                #[cfg(not(target_os = "macos"))]
-                                {
-                                    panel
-                                }
-                            }),
+                            ),
                     ),
             );
         }

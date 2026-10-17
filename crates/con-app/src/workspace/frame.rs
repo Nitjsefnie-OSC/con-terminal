@@ -3,14 +3,18 @@ use std::cell::RefCell;
 use std::rc::Rc;
 
 pub(super) const CANVAS_INSET: f32 = 2.0;
-pub(super) const CANVAS_RADIUS: f32 = 8.0;
 pub(crate) const PANE_INSET: f32 = 3.0;
 pub(crate) const PANE_RADIUS: f32 = 8.0;
 pub(super) const INPUT_ISLAND_INSET: f32 = 6.0;
 pub(super) const INPUT_RADIUS: f32 = 8.0;
 
+pub(crate) fn pane_card_geometry(split: bool, depth: f32) -> (f32, f32) {
+    let depth = if split { 1.0 } else { depth.clamp(0.0, 1.0) };
+    (PANE_INSET * depth, PANE_RADIUS * depth)
+}
+
 pub(super) fn agent_vertical_insets(depth: f32, split: bool, input_reserved: bool) -> (f32, f32) {
-    let top = CANVAS_INSET * depth + if split { PANE_INSET } else { 0.0 };
+    let top = CANVAS_INSET * depth + pane_card_geometry(split, depth).0;
     let bottom = if input_reserved {
         (CANVAS_INSET + INPUT_ISLAND_INSET) * depth
     } else {
@@ -186,25 +190,24 @@ pub(crate) struct PaneSurround {
 }
 
 impl PaneSurround {
-    pub fn render(&self, color: Hsla) -> impl IntoElement + use<> {
+    pub fn render(&self, color: Hsla, depth: f32) -> impl IntoElement + use<> {
         let cache = self.cache.clone();
         gpui::canvas(
             move |bounds, window, _| {
                 let scale = window.scale_factor();
                 let bounds = crate::terminal_geometry::snap_terminal_bounds(bounds, scale);
-                let inset = px(PANE_INSET)
+                let inset = px(PANE_INSET * depth)
                     .min(bounds.size.width * 0.5)
                     .min(bounds.size.height * 0.5);
                 let mut cache = cache.borrow_mut();
-                if cache
-                    .as_ref()
-                    .is_none_or(|old| old.bounds != bounds || old.scale != scale)
-                {
+                if cache.as_ref().is_none_or(|old| {
+                    old.bounds != bounds || old.scale != scale || old.depth != depth
+                }) {
                     *cache = Some(SurroundGeometry {
                         bounds,
-                        depth: 1.0,
+                        depth,
                         scale,
-                        corners: corner_cutouts(bounds.inset(inset), PANE_RADIUS, scale),
+                        corners: corner_cutouts(bounds.inset(inset), PANE_RADIUS * depth, scale),
                     });
                 }
                 (
@@ -251,7 +254,9 @@ impl CanvasSurround {
                 let inset = canvas_inset(bounds, depth);
                 let inner = bounds.inset(inset);
                 log::trace!(target: "con::canvas", "prepaint bounds={bounds:?} depth={depth} safe_height={safe_height}");
-                prepare_native_canvas(inner, CANVAS_RADIUS * depth, window);
+                // Leaves own rounded corners. The shared viewport also covers
+                // the composer reservation and must not cut a second curve.
+                prepare_native_canvas(inner, 0.0, window);
                 prepare_native_safe_area(safe_height, glass, window);
                 let mut cache = cache.borrow_mut();
                 if cache.as_ref().is_none_or(|old| {
@@ -261,7 +266,7 @@ impl CanvasSurround {
                         bounds,
                         depth,
                         scale,
-                        corners: corner_cutouts(inner, CANVAS_RADIUS * depth, scale),
+                        corners: Vec::new(),
                     });
                 }
                 (
@@ -500,7 +505,7 @@ mod tests {
                 let (top, bottom) = agent_vertical_insets(depth, split, false);
                 assert_eq!(
                     top,
-                    CANVAS_INSET * depth + if split { PANE_INSET } else { 0.0 }
+                    CANVAS_INSET * depth + pane_card_geometry(split, depth).0
                 );
                 assert_eq!(bottom, top);
                 let (with_input_top, with_input_bottom) = agent_vertical_insets(depth, split, true);
@@ -807,11 +812,11 @@ mod tests {
     fn corner_paths_are_small_and_cover_the_native_antialiasing_band() {
         let bounds = Bounds::new(point(px(0.0), px(0.0)), gpui::size(px(600.0), px(400.0)));
         for scale in [1.0, 2.0] {
-            let paths = corner_cutouts(bounds, CANVAS_RADIUS, scale);
+            let paths = corner_cutouts(bounds, PANE_RADIUS, scale);
             assert_eq!(paths.len(), 4);
             for path in &paths {
-                assert!(path.bounds.size.width <= px(CANVAS_RADIUS));
-                assert!(path.bounds.size.height <= px(CANVAS_RADIUS));
+                assert!(path.bounds.size.width <= px(PANE_RADIUS));
+                assert!(path.bounds.size.height <= px(PANE_RADIUS));
             }
             let contains = |x, y| {
                 let p = point(px(x), px(y));
