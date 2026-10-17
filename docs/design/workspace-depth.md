@@ -5,14 +5,12 @@
 On macOS, workspaces with sidebars or multiple tabs use an inset terminal
 canvas. It has 2pt of breathing room and 8pt outer corners. Split panes use 3pt
 insets and 7pt corners within that canvas. The original divider hit targets
-remain available between them; no outlines compete with content. At the
-maintainer's request, this local prototype tests small offset shadows on the
-canvas, split panes and composer (3pt blur, -1pt spread). These are passive GPUI
-decorations, not native backing fills; clean mode removes canvas elevation.
-Shadow paint is clipped to four narrow exterior strips. Never put an ordinary
-shadow-only transparent div above native content: its interior shadow relies
-on an opaque GPUI background that Con deliberately does not paint.
-This does not change the application's general shadowless control design.
+remain available between them. Following maintainer feedback on 2026-10-17,
+this prototype replaces shadows with restrained, one-physical-pixel outlines
+on panes and the input tray. The outer canvas has no additional outline.
+Transparent quad paint is clipped to narrow perimeter regions before
+rasterization; it must not shade the full terminal interior. This is a scoped
+exception to the borderless design, not permission to frame every control.
 Pane titles align to the leading edge and surface tabs use the UI font, without
 a nested track or redundant surface count. Their close and rename actions stay
 in the same pane-local scope.
@@ -30,8 +28,7 @@ The input tray spans the terminal column and aligns with the pane cards, with
 centered, capped-width field inside a full-width terminal-colored strip.
 Its popovers share that geometry. The tray uses a lifted Window Chrome fill;
 the space around it belongs to the workspace, not a second native terminal
-material. Its exterior shadow is painted separately from its content clip.
-Pane contact shadows use the same construction at a lower intensity.
+material. Its fine outline is painted separately from its content clip.
 Sidebar boundaries use the canvas gutter, not a decorative vertical line.
 
 Show/hide fades the fixed tray, background and controls together. There is no
@@ -76,9 +73,24 @@ native layout pending before the next frame; a reused terminal is not a newly
 created surface. The floating drag label uses the same 8pt rounding and UI
 typography as the canvas, with a quiet terminal icon and an opaque fill so it
 stays legible above native content.
-Pane headers, surface tabs and drag labels reuse the existing cached terminal
-identity asset. This identifies the terminal surface without guessing which
-application is running or adding process scans to rendering.
+Pane headers, surface tabs and tab navigation share a retained application
+identity. The existing process observer supplies retained process observations; rendering
+does not enumerate processes or scan terminal output. Editors outrank their
+plugin runtimes; conflicting applications at the same rank keep the generic
+identity. Agent identities keep their existing precedence and SSH tabs retain
+their remote identity. Unknown applications fall back to the terminal asset.
+Common editors and runtime ecosystems use the already bundled Nerd Font, just
+like language identities in the file tree; actions continue to use Phosphor.
+Application identities use restrained application-tinted colors across themes;
+unknown shells retain the shared terminal identity rather than a random logo.
+These are presentation facts, never authority for agent execution or control.
+
+The embedded macOS renderer defaults to Ghostty's `window-padding-color = extend`
+so alternate-screen applications carry their edge cells into fractional grid
+padding. This is loaded before the user's native configuration, not as immutable
+host policy. An explicit `background` or `extend-always` choice stays effective.
+Ghostty's own prompt/powerline safeguards remain in charge; Con does not sample
+terminal pixels or repaint program backgrounds in GPUI.
 Drop regions follow the same 3pt inset and 7pt corners as pane cards. Their
 bounds deduct every 1pt split divider. Resizing retains its 5pt hit target but
 shows only a 1pt, inset feedback line on macOS, not a full-height opaque bar.
@@ -98,6 +110,9 @@ have its old split-sized mask.
   so docking controls does not double-composite the sidebar background.
 - AppKit clips terminal host layers against that shared rounded rectangle.
   Rounding a GPUI wrapper alone does not clip its native sibling views.
+  A view-backed NSScrollView must first receive its own backing layer when a
+  rounded mask is requested. A Metal-backed terminal descendant does not
+  guarantee that the scroll host has a layer. Leave the window parent alone.
 - Corner cutouts extend one physical pixel inward over the native mask edge.
   Exact complementary antialiased shapes do not produce full coverage under
   source-over compositing. This small overlap is not an outline or an opaque
@@ -141,8 +156,10 @@ have its old split-sized mask.
 
 ## Scope and acceptance
 
-This iteration is macOS-only. Windows and Linux retain their existing caption,
-terminal reservation and input-bar layout. A portable implementation needs its
+Native canvas geometry, clipping, padding defaults and fine outlines are
+macOS-only. Application identity classification and its bundled colored glyphs
+are shared across platforms. Windows and Linux retain their existing caption,
+terminal reservation and input-bar layout. A portable canvas implementation needs its
 own renderer clipping and caption acceptance; macOS layer masks are not such
 an implementation.
 

@@ -927,9 +927,11 @@ impl Render for ConWorkspace {
                             .bg(top_bar_surface_color),
                     )
                     .child(
-                        frame::surface_elevation(
+                        frame::surface_outline(
                             frame::INPUT_RADIUS * canvas_depth,
-                            if theme.is_dark() { 0.32 } else { 0.20 },
+                            theme
+                                .foreground
+                                .opacity(if theme.is_dark() { 0.16 } else { 0.10 }),
                         )
                         .bottom(px(frame::INPUT_ISLAND_INSET * canvas_depth))
                         .left(px(
@@ -977,16 +979,6 @@ impl Render for ConWorkspace {
                 terminal_surface_color.opacity(self.terminal_opacity),
             ))
             .child(terminal_area);
-
-        #[cfg(target_os = "macos")]
-        let terminal_area = terminal_area.child(
-            frame::surface_elevation(
-                frame::CANVAS_RADIUS * canvas_depth,
-                if theme.is_dark() { 0.12 } else { 0.05 },
-            )
-            .inset(px(frame::CANVAS_INSET * canvas_depth))
-            .opacity(canvas_depth),
-        );
 
         let mut main_area = div().relative().flex().flex_1().min_h_0();
 

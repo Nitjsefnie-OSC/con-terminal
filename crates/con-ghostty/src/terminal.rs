@@ -411,12 +411,13 @@ fn build_ghostty_config(
         .unwrap_or_else(|| Path::new("/tmp"));
     // Con's constructor values are fallbacks. Native source is then replayed,
     // explicit runtime overrides follow it, and immutable host policy is last.
-    load(
-        &defaults.to_config_string(false)?,
-        runtime_dir,
-        false,
-        "generated defaults",
-    )?;
+    // Let alternate-screen programs carry their edge colors into fractional
+    // grid padding. Load as a default, never override an explicit native choice.
+    let defaults_text = format!(
+        "window-padding-color = extend\n{}",
+        defaults.to_config_string(false)?
+    );
+    load(&defaults_text, runtime_dir, false, "generated defaults")?;
     if let Some(source) = source {
         load(
             &source.text,
@@ -3098,6 +3099,44 @@ mod tests {
             ..Default::default()
         };
         assert!(patch.to_config_string(false).is_err());
+    }
+
+    #[test]
+    fn native_padding_color_extends_by_default_and_preserves_user_choices() {
+        ensure_ghostty_init().unwrap();
+        let (_cleanup, root) = temp_test_dir("con-padding-color-test");
+        std::fs::create_dir_all(&root).unwrap();
+        for (text, expected) in [
+            ("", "extend"),
+            ("window-padding-color = background\n", "background"),
+            ("window-padding-color = extend-always\n", "extend-always"),
+        ] {
+            let source = NativeConfigSource {
+                text: text.into(),
+                base_dir: root.clone(),
+            };
+            let config = build_ghostty_config(
+                &GhosttyConfigPatch::default(),
+                Some(&source),
+                &GhosttyConfigPatch::default(),
+            )
+            .unwrap();
+            let mut value: *const std::os::raw::c_char = std::ptr::null();
+            let key = "window-padding-color";
+            assert!(unsafe {
+                crate::ffi::ghostty_config_get(
+                    config.0,
+                    (&mut value as *mut *const std::os::raw::c_char).cast(),
+                    key.as_ptr().cast(),
+                    key.len(),
+                )
+            });
+            assert!(!value.is_null());
+            assert_eq!(
+                unsafe { std::ffi::CStr::from_ptr(value) }.to_str().unwrap(),
+                expected
+            );
+        }
     }
 
     #[test]

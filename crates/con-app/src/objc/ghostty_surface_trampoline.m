@@ -117,9 +117,15 @@ uint64_t con_terminal_canvas_generation(void *host_ptr) {
 void con_terminal_canvas_apply_clip(void *host_ptr) {
     NSView *host = (__bridge NSView *)host_ptr;
     ConTerminalCanvasClip *clip = objc_getAssociatedObject(host.superview, &kConTerminalCanvasKey);
-    if (clip == nil || host.layer == nil) return;
-    NSRect rect = [host convertRect:clip.rect fromView:host.superview];
+    if (clip == nil) return;
     ConTerminalCanvasClip *pane = objc_getAssociatedObject(host, &kConTerminalPaneClipKey);
+    // NSScrollView can remain view-backed even when its terminal descendant
+    // has a Metal layer. A layer mask is otherwise silently skipped entirely.
+    if (host.layer == nil && (clip.radius > 0 || pane.radius > 0)) {
+        host.wantsLayer = YES;
+    }
+    if (host.layer == nil) return;
+    NSRect rect = [host convertRect:clip.rect fromView:host.superview];
     CGFloat paneRadius = pane.radius;
     NSRect paneRect = paneRadius > 0 ? [host convertRect:pane.rect fromView:host.superview] : NSZeroRect;
     CGFloat scale = host.window != nil ? host.window.backingScaleFactor : host.layer.contentsScale;

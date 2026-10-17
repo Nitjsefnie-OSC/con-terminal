@@ -8,6 +8,13 @@ con is still pre-release, so entries may group related beta work while the produ
 
 ### Changed
 
+**Terminal Identities**
+
+- Tabs and surfaces recognize common editors, language runtimes and developer
+  tools through their retained process observations, with colored application
+  identities. Unknown programs keep the terminal icon; terminal output does not
+  determine application identity.
+
 **macOS**
 
 - The terminal sits in a subtly rounded canvas, with an elevated input tray
@@ -25,7 +32,9 @@ con is still pre-release, so entries may group related beta work while the produ
 - Dragging a pane keeps vertical tabs in the sidebar instead of briefly opening
   a horizontal strip. Pane drag labels, tab details and the floating command
   bar use a more compact, consistent layout.
-- Pane headers and surface tabs share the terminal identity icon. Files and
+- Pane headers share application identities with tab navigation. Panes and the
+  input tray use restrained fine edges rather
+  than drop shadows. Files and
   Search also give terminal content the top row when the left column has room
   for the window controls.
 
@@ -36,6 +45,10 @@ con is still pre-release, so entries may group related beta work while the produ
 - Closing the other panes no longer leaves the surviving terminal clipped to
   its former split area. Pane drop previews follow rounded pane edges and
   account for the space occupied by dividers.
+- Rounded terminal clipping also initializes view-backed scroll hosts, rather
+  than silently skipping masks when only the terminal child has a backing layer.
+- Full-screen terminal applications can extend their edge colors into unused
+  grid padding on macOS. Explicit native padding-color settings stay unchanged.
 
 ## `v0.1.0-beta.138` - 2026-10-16
 

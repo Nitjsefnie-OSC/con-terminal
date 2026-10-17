@@ -2289,6 +2289,7 @@ impl PaneTree {
         pane_id: PaneId,
         session_id: u64,
         title: String,
+        _identity_icon: &'static str,
         is_focused: bool,
         has_splits: bool,
         is_zoomed: bool,
@@ -2409,7 +2410,7 @@ impl PaneTree {
                                 .size(px(14.0))
                                 .flex_shrink_0()
                                 .child(crate::assets::tab_identity_icon(
-                                    crate::assets::tab_identity_asset("phosphor/terminal.svg"),
+                                    crate::assets::tab_identity_asset(_identity_icon),
                                     px(14.0),
                                     title_color,
                                 )),
@@ -2435,7 +2436,7 @@ impl PaneTree {
         let dragged = DraggedTab {
             session_id,
             label: drag_label,
-            icon: "phosphor/terminal.svg",
+            icon: _identity_icon,
             origin: DraggedTabOrigin::Pane,
             preview_constraint: None,
             pane_id: Some(pane_id),
@@ -2965,6 +2966,7 @@ impl PaneTree {
                 pane_id,
                 session_id,
                 pane_title,
+                active.terminal.presentation_icon(),
                 is_focused,
                 tree_has_splits,
                 is_zoomed,
@@ -3064,7 +3066,7 @@ impl PaneTree {
                         rename_cb(sid, window, cx);
                     })
                     .child(crate::assets::tab_identity_icon(
-                        crate::assets::tab_identity_asset("phosphor/terminal.svg"),
+                        crate::assets::tab_identity_asset(surface.terminal.presentation_icon()),
                         mono_icon_px(theme, 12.0),
                         icon_color,
                     ))
@@ -3215,9 +3217,16 @@ impl PaneTree {
                     container
                         .child(active.terminal.pane_surround(_surround_color))
                         .child(
-                            crate::workspace::frame::surface_elevation(
+                            crate::workspace::frame::surface_outline(
                                 7.0,
-                                if _surround_color.l < 0.5 { 0.28 } else { 0.18 },
+                                theme
+                                    .foreground
+                                    .opacity(match (theme.is_dark(), is_focused) {
+                                        (true, true) => 0.18,
+                                        (true, false) => 0.10,
+                                        (false, true) => 0.12,
+                                        (false, false) => 0.065,
+                                    }),
                             )
                             .inset(px(crate::workspace::frame::PANE_INSET)),
                         )
@@ -3728,6 +3737,7 @@ mod tests {
                     0,
                     0,
                     "项目 / a long shell title that must not move the controls".into(),
+                    crate::terminal_identity::TERMINAL,
                     self.focused,
                     true,
                     self.zoomed,
@@ -3821,6 +3831,7 @@ mod tests {
                     pane_id,
                     0,
                     format!("Pane {pane_id}"),
+                    crate::terminal_identity::TERMINAL,
                     pane_id == 0,
                     true,
                     false,

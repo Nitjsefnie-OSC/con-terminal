@@ -177,6 +177,47 @@ icons and the input island's settled layout; the test tab was then removed.
 
 ## Lessons
 
+### Differently colored TUI surfaces
+
+The nvim screenshot exposed why same-color shells are insufficient for edge
+acceptance. The native clipping function returned immediately for a host without
+a backing layer, although the real host is an NSScrollView and its Metal-backed
+descendant does not guarantee host backing. The prior native fixture explicitly
+enabled backing, so it could not catch this path. Rounded clipping now promotes
+only the host when needed; a new NSScrollView fixture starts unbacked and checks
+mask attachment without promoting the window parent. This closes the skipped
+mask path, not every possible source of a one-pixel seam.
+
+Application identities now reuse retained process observations and bundled
+font glyphs. The observer refreshes a shared per-terminal icon only when it
+changes; tab and surface rendering do not run OS queries. Names are matched
+exactly (including executable basenames and Python versions), editor processes
+outrank plugin runtimes, and conflicts stay generic. Terminal output is not
+application-identity evidence. The shorter contact shadow follows a 1.5pt blur
+and 0.5pt offset, without introducing a decorative border.
+
+That shorter shadow was also rejected in the next user feedback. The maintainer
+explicitly allowed restrained hairlines instead of strict borderlessness. The
+current revision removes the shadows, outlines panes and the tray with one
+physical pixel, and clips quad rasterization to perimeter strips. It does not
+add a second enclosing canvas outline. Application identities now use color.
+
+An isolated nvim test also showed a separate padding-color mismatch: Ghostty's
+native default fills unused grid padding with the configured terminal background,
+not the application's background. Logged host/clip/surface geometry matched, so
+automatic scroll insets were not changed speculatively. The native renderer now
+loads `window-padding-color = extend` as a default before user configuration.
+An explicit native choice still wins; a linked config test checks all three
+effective values. This uses upstream's edge extension and prompt safeguards,
+not a GPUI fill over terminal output.
+
+The hairline revision passed 103 focused app tests and all 35 linked
+`con-ghostty` tests, strict app Clippy, formatting, and the app build. An isolated
+light-theme preview showed colored Python and Neovim identities and Neovim's
+background extending into the bottom padding and rounded corners. The original
+user preview was not restarted or sent test input. Dark-theme runtime inspection,
+Windows/Linux runtime acceptance, and frame-rate measurement remain outstanding.
+
 ### Input tray feedback
 
 The centered 800pt field and native safe-area extension still read as two

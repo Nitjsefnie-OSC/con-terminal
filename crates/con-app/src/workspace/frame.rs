@@ -8,27 +8,23 @@ pub(crate) const PANE_INSET: f32 = 3.0;
 pub(super) const INPUT_ISLAND_INSET: f32 = 6.0;
 pub(super) const INPUT_RADIUS: f32 = 8.0;
 
-/// Prototype elevation is confined to the existing gutters. It never supplies
-/// a terminal backing or changes the native surface's opacity.
-pub(crate) fn surface_elevation(radius: f32, opacity: f32) -> gpui::Div {
+/// One physical pixel, without a background fill or a shadow outside the pane.
+pub(crate) fn surface_outline(radius: f32, color: Hsla) -> gpui::Div {
     use gpui::ParentElement;
     gpui::div().absolute().child(
         gpui::canvas(
             |bounds, _, _| bounds,
             move |_, bounds, window, _| {
-                let shadow = gpui::BoxShadow::new(px(0.0), px(1.0), gpui::black().opacity(opacity))
-                    .blur_radius(px(3.0))
-                    .spread_radius(px(-1.0));
-                // Drop shadows normally rely on a later opaque fill to hide their
-                // interior. Native glass has no such GPUI fill. Draw only exterior
-                // strips, keeping content and fragment cost out of the shadow.
-                for strip in elevation_strips(bounds, px(5.0)) {
+                let width = px(1.0 / window.scale_factor());
+                // Clip before rasterization: a transparent full-window quad
+                // would still shade its interior on every frame.
+                for strip in outline_strips(bounds, px(radius), width) {
                     window.with_content_mask(Some(gpui::ContentMask { bounds: strip }), |window| {
-                        window.paint_drop_shadows(
-                            bounds,
-                            gpui::Corners::all(px(radius)),
-                            std::slice::from_ref(&shadow),
-                        );
+                        let mut edge = gpui::fill(bounds, gpui::transparent_black());
+                        edge.corner_radii = gpui::Corners::all(px(radius));
+                        edge.border_widths = gpui::Edges::all(width);
+                        edge.border_color = color;
+                        window.paint_quad(edge);
                     });
                 }
             },
@@ -38,21 +34,23 @@ pub(crate) fn surface_elevation(radius: f32, opacity: f32) -> gpui::Div {
     )
 }
 
-fn elevation_strips(bounds: Bounds<Pixels>, width: Pixels) -> [Bounds<Pixels>; 4] {
-    let outer = bounds.dilate(width);
+fn outline_strips(bounds: Bounds<Pixels>, radius: Pixels, width: Pixels) -> [Bounds<Pixels>; 4] {
+    let cap = radius.max(width).min(bounds.size.height * 0.5);
+    let side = width.min(bounds.size.width * 0.5);
+    let middle = (bounds.size.height - cap * 2.0).max(px(0.0));
     [
-        Bounds::new(outer.origin, gpui::size(outer.size.width, width)),
+        Bounds::new(bounds.origin, gpui::size(bounds.size.width, cap)),
         Bounds::new(
-            point(outer.left(), bounds.bottom()),
-            gpui::size(outer.size.width, width),
+            point(bounds.left(), bounds.bottom() - cap),
+            gpui::size(bounds.size.width, cap),
         ),
         Bounds::new(
-            point(outer.left(), bounds.top()),
-            gpui::size(width, bounds.size.height),
+            point(bounds.left(), bounds.top() + cap),
+            gpui::size(side, middle),
         ),
         Bounds::new(
-            point(bounds.right(), bounds.top()),
-            gpui::size(width, bounds.size.height),
+            point(bounds.right() - side, bounds.top() + cap),
+            gpui::size(side, middle),
         ),
     ]
 }
@@ -423,17 +421,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn elevation_never_shades_native_surface_content() {
-        for (width, height) in [(20.0, 16.0), (800.0, 44.0), (2400.0, 1600.0)] {
+    fn outline_masks_keep_raster_work_on_the_perimeter() {
+        for (width, height) in [(320.0, 44.0), (1200.0, 800.0), (2400.0, 1600.0)] {
             let bounds = Bounds::new(point(px(12.0), px(28.0)), gpui::size(px(width), px(height)));
-            let strips = elevation_strips(bounds, px(5.0));
             let mut area = 0.0;
-            for strip in strips {
-                let overlap = strip.intersect(&bounds);
-                assert!(overlap.size.width <= px(0.0) || overlap.size.height <= px(0.0));
+            for strip in outline_strips(bounds, px(8.0), px(0.5)) {
+                assert!(strip.left() >= bounds.left() && strip.right() <= bounds.right());
+                assert!(strip.top() >= bounds.top() && strip.bottom() <= bounds.bottom());
+                assert!(!strip.contains(&bounds.center()));
                 area += strip.size.width.as_f32() * strip.size.height.as_f32();
             }
-            assert_eq!(area, (width + 10.0) * (height + 10.0) - width * height);
+            assert!(area <= width * 16.0 + height);
         }
     }
 
@@ -722,6 +720,42 @@ mod tests {
             assert!(!contains(8.0, 8.0), "corner painted terminal interior");
         }
         assert!(corner_cutouts(bounds, 0.0, 2.0).is_empty());
+    }
+
+    #[gpui::test]
+    fn rounded_canvas_creates_a_mask_for_a_view_backed_scroll_host() {
+        use cocoa::foundation::{NSPoint, NSRect, NSSize};
+        use objc::{class, msg_send, sel, sel_impl};
+        use std::ffi::c_void;
+        unsafe extern "C" {
+            fn con_terminal_canvas_apply_clip(view: *mut c_void);
+            fn con_terminal_canvas_clip_is_attached(view: *mut c_void) -> bool;
+        }
+        unsafe {
+            let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(400.0, 300.0));
+            let parent: *mut objc::runtime::Object = msg_send![class!(NSView), alloc];
+            let parent: *mut objc::runtime::Object = msg_send![parent, initWithFrame: rect];
+            let host: *mut objc::runtime::Object = msg_send![class!(NSScrollView), alloc];
+            let host: *mut objc::runtime::Object = msg_send![host, initWithFrame: rect];
+            let _: () = msg_send![parent, addSubview: host];
+            let _: () = msg_send![host, setWantsLayer: false];
+            let layer: *mut objc::runtime::Object = msg_send![host, layer];
+            assert!(
+                layer.is_null(),
+                "fixture must exercise the unbacked host path"
+            );
+            con_terminal_canvas_set_clip(parent.cast(), 0.0, 0.0, 400.0, 300.0, 8.0);
+            con_terminal_canvas_apply_clip(host.cast());
+            assert!(con_terminal_canvas_clip_is_attached(host.cast()));
+            let parent_layer: *mut objc::runtime::Object = msg_send![parent, layer];
+            assert!(
+                parent_layer.is_null(),
+                "mask must not change window-container backing"
+            );
+            let _: () = msg_send![host, removeFromSuperview];
+            let _: () = msg_send![host, release];
+            let _: () = msg_send![parent, release];
+        }
     }
 
     #[gpui::test]

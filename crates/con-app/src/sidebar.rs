@@ -2152,9 +2152,14 @@ fn surface_tone(theme: &gpui_component::Theme, intensity: f32) -> Hsla {
 }
 
 fn sidebar_selection_fill(theme: &gpui_component::Theme) -> Hsla {
-    theme
-        .foreground
-        .opacity(if theme.is_dark() { 0.12 } else { 0.065 })
+    let opacity = if cfg!(target_os = "macos") {
+        if theme.is_dark() { 0.10 } else { 0.045 }
+    } else if theme.is_dark() {
+        0.12
+    } else {
+        0.065
+    };
+    theme.foreground.opacity(opacity)
 }
 
 fn sidebar_tab_icon(icon: &'static str) -> &'static str {

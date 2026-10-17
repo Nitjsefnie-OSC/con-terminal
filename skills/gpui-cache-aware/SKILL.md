@@ -139,6 +139,8 @@ If a cached view causes overlap, clipping, or stale layout, the cache boundary i
   the content's unchanged appearance and the masked geometry; do not infer a
   frame-rate improvement from a smaller painted region alone.
 - A pane's undecorated/single-pane path must still run native clip prepaint.
+  A native scroll host also needs its own backing layer before a layer mask
+  can work; a Metal-backed descendant does not imply parent backing.
   Reusing its terminal after closing a sibling can otherwise retain a split
   mask even though its view frame has expanded. Test the real rendering path,
   not just the native mask setter in isolation.
