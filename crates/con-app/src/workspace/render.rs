@@ -1148,11 +1148,7 @@ impl Render for ConWorkspace {
                                 ),
                                 tab_strip_progress,
                             );
-                            panel
-                                .px(px(frame::CANVAS_INSET))
-                                .pt(px(top))
-                                .pb(px(bottom))
-                                .bg(top_bar_surface_color)
+                            panel.pt(px(top)).pb(px(bottom)).bg(top_bar_surface_color)
                         }
                         #[cfg(not(target_os = "macos"))]
                         {
@@ -1189,7 +1185,7 @@ impl Render for ConWorkspace {
                                     .absolute()
                                     .top_0()
                                     .bottom_0()
-                                    .left(px(-2.0))
+                                    .left(px(if cfg!(target_os = "macos") { 0.0 } else { -2.0 }))
                                     .w(px(5.0))
                                     .cursor_col_resize()
                                     .bg(theme.transparent)
@@ -1215,11 +1211,7 @@ impl Render for ConWorkspace {
                     .child(
                         div()
                             .w(px(effective_agent_panel_width
-                                - if cfg!(target_os = "macos") {
-                                    2.0 * frame::CANVAS_INSET - 1.0
-                                } else {
-                                    0.0
-                                }))
+                                + if cfg!(target_os = "macos") { 1.0 } else { 0.0 }))
                             .flex_shrink_0()
                             .min_w_0()
                             .h_full()

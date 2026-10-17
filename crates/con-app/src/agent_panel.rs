@@ -4773,7 +4773,13 @@ impl Render for AgentPanel {
             .flex_shrink_0()
             .child(provider_picker)
             .child(model_picker);
-        let header = header.child(control_icons);
+        let header = header.child(control_icons).map(|header| {
+            #[cfg(target_os = "macos")]
+            let header = header
+                .w_auto()
+                .mx(px(crate::workspace::frame::CANVAS_INSET));
+            header
+        });
 
         // ── Panel ───────────────────────────────────────────────
         // Use system proportional font for readable prose — the workspace root
@@ -4901,6 +4907,11 @@ impl Render for AgentPanel {
                     .relative()
                     .flex_1()
                     .min_h_0()
+                    .map(|content| {
+                        #[cfg(target_os = "macos")]
+                        let content = content.mx(px(crate::workspace::frame::CANVAS_INSET));
+                        content
+                    })
                     .child(
                         history_content
                             .opacity(content_reveal)
@@ -4931,6 +4942,11 @@ impl Render for AgentPanel {
                 .flex_col()
                 .flex_1()
                 .min_h_0()
+                .map(|content| {
+                    #[cfg(target_os = "macos")]
+                    let content = content.mx(px(crate::workspace::frame::CANVAS_INSET));
+                    content
+                })
                 .child(transcript_surface);
 
             if show_jump_to_latest {
@@ -5015,7 +5031,10 @@ impl Render for AgentPanel {
                     .map(|composer| {
                         #[cfg(target_os = "macos")]
                         {
-                            composer.px(px(crate::workspace::frame::PANE_INSET)).pb_0()
+                            composer
+                                .pl_0()
+                                .pr(px(crate::workspace::frame::CARD_OUTER_INSET))
+                                .pb_0()
                         }
                         #[cfg(not(target_os = "macos"))]
                         {
@@ -5724,19 +5743,29 @@ mod tests {
             );
             let field = view.debug_bounds("agent-composer-field").unwrap();
             let send = view.debug_bounds("agent-composer-send").unwrap();
+            assert!(surface.left() >= gpui::px(0.0));
+            #[cfg(not(target_os = "macos"))]
             assert!(surface.left() > gpui::px(0.0));
             assert!(surface.right() < gpui::px(width));
             #[cfg(target_os = "macos")]
             {
                 assert_eq!(surface.bottom(), gpui::px(500.0));
-                assert_eq!(
-                    surface.left(),
-                    gpui::px(crate::workspace::frame::PANE_INSET)
-                );
+                assert_eq!(surface.left(), gpui::px(0.0));
                 assert_eq!(
                     surface.right(),
-                    gpui::px(width - crate::workspace::frame::PANE_INSET)
+                    gpui::px(width - crate::workspace::frame::CARD_OUTER_INSET)
                 );
+                let visible_pane_edge = -gpui::px(crate::workspace::frame::CARD_OUTER_INSET);
+                assert_eq!(
+                    surface.left() - visible_pane_edge,
+                    gpui::px(width) - surface.right()
+                );
+                let header = view.debug_bounds("agent-header").unwrap();
+                assert_eq!(
+                    header.left(),
+                    gpui::px(crate::workspace::frame::CANVAS_INSET)
+                );
+                assert_eq!(transcript.left(), header.left());
             }
             assert!(field.size.width > gpui::px(0.0));
             assert!(field.right() <= send.left());

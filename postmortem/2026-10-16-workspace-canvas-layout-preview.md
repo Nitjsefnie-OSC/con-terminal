@@ -364,3 +364,20 @@ a process sample showed an idle main run loop and the socket reported ready
 shells. Clicking the blank titlebar activated the window and completed its
 visible content. No general initial-paint fix is claimed here. Portable runtime,
 dark-theme runtime and high-speed motion remain unverified.
+
+### Visible leading clearance of the agent composer
+
+The previous alignment measured 5pt from the sidebar's invisible column edge.
+The terminal card already ended 5pt before that edge, producing a visible 10pt
+leading gap against 5pt trailing and bottom gaps. Move the old sidebar-wide
+horizontal padding to the header, transcript and history themselves. Their
+physical content positions stay unchanged; the composer can occupy the column's
+leading edge with only its 5pt trailing inset. Keep the resize hitbox fully
+inside the clipped sidebar after removing its outer padding. No negative
+margins, translated controls or portable style changes are needed.
+
+Verification: all 33 agent-panel tests and two workspace spacing tests passed,
+including narrow and scaled composer bounds. Formatting, strict Clippy, diff
+checks and the app build passed. The updated Unified light-theme preview shows
+equal 5pt visible leading, trailing and bottom clearance. Windows/Linux runtime,
+dark-theme runtime and high-speed motion were not validated in this follow-up.

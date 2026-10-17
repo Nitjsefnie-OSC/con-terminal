@@ -39,6 +39,13 @@ rounded card fill or shadow. Its composer bottom aligns with the terminal-card
 bottom, including when the bottom tray is reserved. The composer adds no second
 bottom padding inside this baseline; only its fill and fine edge lift it. Do not nest the conversation inside a
 second floating card.
+Measure the composer's leading clearance from the adjacent terminal card's
+visible edge, not the unframed sidebar's logical boundary. That terminal already
+contributes the 5pt gap. The sidebar body therefore spans its full column; the
+composer starts at the column boundary and keeps 5pt on the trailing side. Its
+bottom remains on the terminal baseline. Header, transcript and history retain
+their own 2pt horizontal inset so this correction does not move their content.
+Keep the sidebar's full 5pt resize hitbox inside its clipping boundary.
 Compact-tab details use a stable tile anchor and one opaque, rounded material.
 The title and identity icon share one row, with the pane count at its trailing
 edge; the path follows below. Keep 12pt horizontal and 10pt vertical padding.

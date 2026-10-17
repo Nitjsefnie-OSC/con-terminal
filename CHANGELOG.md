@@ -32,7 +32,8 @@ con is still pre-release, so entries may group related beta work while the produ
 - Single and split terminals share quiet rounded edges with both input areas,
   with consistent spacing between panes, the command bar and the window edge.
   The agent panel stays unframed, with its composer aligned to the terminal's
-  lower edge. Surface tabs use clearer labels,
+  lower edge and equal visible clearance on its left, right and bottom.
+  Surface tabs use clearer labels,
   and compact-tab details use a stable popover with grouped pane context.
 - Pane resize handles use a short, centered grip on hover and while dragging,
   leaving the full gutter available for resizing.

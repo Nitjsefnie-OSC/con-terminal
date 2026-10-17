@@ -2,9 +2,10 @@ use gpui::{Bounds, Hsla, IntoElement, PathBuilder, Pixels, Styled, Window, point
 use std::cell::RefCell;
 use std::rc::Rc;
 
-pub(super) const CANVAS_INSET: f32 = 2.0;
+pub(crate) const CANVAS_INSET: f32 = 2.0;
 pub(crate) const PANE_INSET: f32 = 3.0;
 pub(crate) const PANE_RADIUS: f32 = 8.0;
+pub(crate) const CARD_OUTER_INSET: f32 = CANVAS_INSET + PANE_INSET;
 pub(crate) const CARD_GAP: f32 = 2.0 * PANE_INSET + 1.0;
 pub(super) const INPUT_BOTTOM_INSET: f32 = CARD_GAP - CANVAS_INSET;
 pub(super) const INPUT_RADIUS: f32 = PANE_RADIUS;
@@ -153,7 +154,7 @@ fn outline_strips(bounds: Bounds<Pixels>, radius: Pixels, width: Pixels) -> [Bou
 /// Align the input tray and its popovers with the pane cards, not the window
 /// centre. Include both the outer canvas and inner pane inset.
 pub(super) fn input_island_geometry(width: f32, depth: f32) -> (f32, f32) {
-    let inset = ((CANVAS_INSET + PANE_INSET) * depth).min(width * 0.5);
+    let inset = (CARD_OUTER_INSET * depth).min(width * 0.5);
     (inset, (width - 2.0 * inset).max(0.0))
 }
 
