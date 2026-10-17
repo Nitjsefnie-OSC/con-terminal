@@ -29,17 +29,21 @@ con is still pre-release, so entries may group related beta work while the produ
   takes less vertical space, and the input tray fades in place rather than
   sliding the terminal on every animation frame.
   A single tab without sidebars keeps the clean, edge-to-edge terminal layout.
-- Single and split terminals share quiet rounded edges on macOS. The agent
-  panel stays unframed, with a raised composer. Surface tabs use clearer labels,
+- Single and split terminals share quiet rounded edges with both input areas,
+  with consistent spacing between panes, the command bar and the window edge.
+  The agent panel stays unframed, with its composer aligned to the terminal's
+  lower edge. Surface tabs use clearer labels,
   and compact-tab details use a stable popover with grouped pane context.
+- Pane resize handles use a short, centered grip on hover and while dragging,
+  leaving the full gutter available for resizing.
 - The floating input bar fades its background and controls together, without
   first opening a separate empty strip. Pane clipping also recovers when native
   backing layers change without a layout-size change.
 - Dragging a pane keeps vertical tabs in the sidebar instead of briefly opening
   a horizontal strip. Pane drag labels, tab details and the floating command
   bar use a more compact, consistent layout.
-- Pane headers share application identities with tab navigation. Pane cards use
-  fine edges; input surfaces use short contact shadows. Files and
+- Pane headers share application identities with tab navigation. Pane cards and
+  input surfaces share the same fine edge treatment. Files and
   Search also give terminal content the top row when the left column has room
   for the window controls.
 

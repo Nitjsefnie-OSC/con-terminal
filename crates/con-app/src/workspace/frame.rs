@@ -5,22 +5,40 @@ use std::rc::Rc;
 pub(super) const CANVAS_INSET: f32 = 2.0;
 pub(crate) const PANE_INSET: f32 = 3.0;
 pub(crate) const PANE_RADIUS: f32 = 8.0;
-pub(super) const INPUT_ISLAND_INSET: f32 = 6.0;
-pub(super) const INPUT_RADIUS: f32 = 8.0;
+pub(crate) const CARD_GAP: f32 = 2.0 * PANE_INSET + 1.0;
+pub(super) const INPUT_BOTTOM_INSET: f32 = CARD_GAP - CANVAS_INSET;
+pub(super) const INPUT_RADIUS: f32 = PANE_RADIUS;
+
+pub(super) fn canvas_top_inset(depth: f32, horizontal_tabs: f32) -> f32 {
+    let tab_bottom_clearance = (super::TOP_BAR_TABS_HEIGHT - super::TOP_BAR_TAB_HEIGHT) * 0.5;
+    (CANVAS_INSET - tab_bottom_clearance * horizontal_tabs.clamp(0.0, 1.0)).max(0.0) * depth
+}
 
 pub(crate) fn pane_card_geometry(split: bool, depth: f32) -> (f32, f32) {
     let depth = if split { 1.0 } else { depth.clamp(0.0, 1.0) };
     (PANE_INSET * depth, PANE_RADIUS * depth)
 }
 
-pub(super) fn agent_vertical_insets(depth: f32, split: bool, input_reserved: bool) -> (f32, f32) {
-    let top = CANVAS_INSET * depth + pane_card_geometry(split, depth).0;
-    let bottom = if input_reserved {
-        (CANVAS_INSET + INPUT_ISLAND_INSET) * depth
-    } else {
-        top
-    };
-    (top, bottom)
+pub(super) fn agent_vertical_insets(
+    depth: f32,
+    split: bool,
+    input_reserved_height: f32,
+    horizontal_tabs: f32,
+) -> (f32, f32) {
+    let pane_inset = pane_card_geometry(split, depth).0;
+    let top = canvas_top_inset(depth, horizontal_tabs) + pane_inset;
+    (
+        top,
+        CANVAS_INSET * depth + pane_inset + input_reserved_height,
+    )
+}
+
+pub(crate) fn card_edge(radius: f32, foreground: Hsla, dark: bool) -> gpui::Div {
+    surface_edge(
+        radius,
+        foreground.opacity(if dark { 0.12 } else { 0.075 }),
+        false,
+    )
 }
 
 /// Shared fine edge with a short, diagonal contact shadow. Never shade native content.
@@ -140,7 +158,7 @@ pub(super) fn input_island_geometry(width: f32, depth: f32) -> (f32, f32) {
 }
 
 pub(super) fn input_safe_height(height: f32, progress: f32, depth: f32) -> f32 {
-    (height + 2.0 * INPUT_ISLAND_INSET * depth) * progress.clamp(0.0, 1.0)
+    (height + (CARD_GAP - PANE_INSET + INPUT_BOTTOM_INSET) * depth) * progress.clamp(0.0, 1.0)
 }
 
 pub(super) fn input_reserved_height(height: f32, visible: bool, progress: f32, depth: f32) -> f32 {
@@ -169,7 +187,7 @@ pub(super) fn input_reveal_clip(height: f32, progress: f32, depth: f32) -> gpui:
     let progress = progress.clamp(0.0, 1.0);
     gpui::div()
         .absolute()
-        .bottom(px(INPUT_ISLAND_INSET * depth))
+        .bottom(px(INPUT_BOTTOM_INSET * depth))
         .left_0()
         .w_full()
         .h(px(height))
@@ -211,7 +229,7 @@ impl PaneSurround {
                     });
                 }
                 (
-                    surround_strips(bounds, inset),
+                    surround_strips(bounds, bounds.inset(inset)),
                     cache.as_ref().unwrap().corners.clone(),
                 )
             },
@@ -243,6 +261,7 @@ impl CanvasSurround {
         &self,
         color: Hsla,
         depth: f32,
+        horizontal_tabs: f32,
         safe_height: f32,
         glass: Hsla,
     ) -> impl IntoElement + use<> {
@@ -251,8 +270,7 @@ impl CanvasSurround {
             move |bounds, window, _| {
                 let scale = window.scale_factor();
                 let bounds = crate::terminal_geometry::snap_terminal_bounds(bounds, scale);
-                let inset = canvas_inset(bounds, depth);
-                let inner = bounds.inset(inset);
+                let inner = canvas_inner_bounds(bounds, depth, horizontal_tabs);
                 log::trace!(target: "con::canvas", "prepaint bounds={bounds:?} depth={depth} safe_height={safe_height}");
                 // Leaves own rounded corners. The shared viewport also covers
                 // the composer reservation and must not cut a second curve.
@@ -270,7 +288,7 @@ impl CanvasSurround {
                     });
                 }
                 (
-                    surround_strips(bounds, inset),
+                    surround_strips(bounds, inner),
                     cache.as_ref().unwrap().corners.clone(),
                 )
             },
@@ -332,21 +350,35 @@ fn canvas_inset(bounds: Bounds<Pixels>, depth: f32) -> Pixels {
         .max(px(0.0))
 }
 
-fn surround_strips(bounds: Bounds<Pixels>, inset: Pixels) -> [Bounds<Pixels>; 4] {
-    let inner = bounds.inset(inset);
+fn canvas_inner_bounds(bounds: Bounds<Pixels>, depth: f32, tabs: f32) -> Bounds<Pixels> {
+    let inset = canvas_inset(bounds, depth);
+    let top = px(canvas_top_inset(depth, tabs)).min(inset);
+    Bounds::new(
+        point(bounds.left() + inset, bounds.top() + top),
+        gpui::size(
+            bounds.size.width - inset * 2.0,
+            bounds.size.height - inset - top,
+        ),
+    )
+}
+
+fn surround_strips(bounds: Bounds<Pixels>, inner: Bounds<Pixels>) -> [Bounds<Pixels>; 4] {
     [
-        Bounds::new(bounds.origin, gpui::size(bounds.size.width, inset)),
         Bounds::new(
-            point(bounds.left(), bounds.bottom() - inset),
-            gpui::size(bounds.size.width, inset),
+            bounds.origin,
+            gpui::size(bounds.size.width, inner.top() - bounds.top()),
+        ),
+        Bounds::new(
+            point(bounds.left(), inner.bottom()),
+            gpui::size(bounds.size.width, bounds.bottom() - inner.bottom()),
         ),
         Bounds::new(
             point(bounds.left(), inner.top()),
-            gpui::size(inset, inner.size.height),
+            gpui::size(inner.left() - bounds.left(), inner.size.height),
         ),
         Bounds::new(
             point(inner.right(), inner.top()),
-            gpui::size(inset, inner.size.height),
+            gpui::size(bounds.right() - inner.right(), inner.size.height),
         ),
     ]
 }
@@ -503,18 +535,17 @@ mod tests {
     fn agent_edges_follow_terminal_cards_and_the_visible_input_tray() {
         for depth in [0.0, 0.5, 1.0] {
             for split in [false, true] {
-                let (top, bottom) = agent_vertical_insets(depth, split, false);
+                let (top, bottom) = agent_vertical_insets(depth, split, 0.0, 0.0);
                 assert_eq!(
                     top,
                     CANVAS_INSET * depth + pane_card_geometry(split, depth).0
                 );
                 assert_eq!(bottom, top);
-                let (with_input_top, with_input_bottom) = agent_vertical_insets(depth, split, true);
+                let reserved = input_reserved_height(44.0, true, 1.0, depth);
+                let (with_input_top, with_input_bottom) =
+                    agent_vertical_insets(depth, split, reserved, 0.0);
                 assert_eq!(with_input_top, top);
-                assert_eq!(
-                    with_input_bottom,
-                    (CANVAS_INSET + INPUT_ISLAND_INSET) * depth
-                );
+                assert_eq!(with_input_bottom, top + reserved);
             }
         }
     }
@@ -570,8 +601,55 @@ mod tests {
         }
         assert_eq!(input_island_geometry(1600.0, 1.0), (5.0, 1590.0));
         assert_eq!(input_island_geometry(900.0, 1.0), (5.0, 890.0));
-        assert_eq!(input_safe_height(44.0, 1.0, 1.0), 56.0);
+        assert_eq!(input_safe_height(44.0, 1.0, 1.0), 53.0);
         assert_eq!(input_safe_height(44.0, 0.0, 1.0), 0.0);
+    }
+
+    #[test]
+    fn workspace_gutters_and_composer_baselines_agree() {
+        for height in [44.0, 72.0, 104.0] {
+            let window_bottom = 600.0;
+            let reserved = input_reserved_height(height, true, 1.0, 1.0);
+            let pane_bottom = window_bottom - CANVAS_INSET - reserved - PANE_INSET;
+            let tray_bottom = window_bottom - CANVAS_INSET - INPUT_BOTTOM_INSET;
+            let tray_top = tray_bottom - height;
+            assert_eq!(tray_top - pane_bottom, 7.0);
+            assert_eq!(window_bottom - tray_bottom, 7.0);
+            assert_eq!(2.0 * PANE_INSET + 1.0, tray_top - pane_bottom);
+
+            for split in [false, true] {
+                for input_height in [0.0, reserved] {
+                    let (_, padding_bottom) = agent_vertical_insets(1.0, split, input_height, 0.0);
+                    let terminal_bottom = window_bottom - CANVAS_INSET - input_height - PANE_INSET;
+                    assert_eq!(window_bottom - padding_bottom, terminal_bottom);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn horizontal_tabs_do_not_double_the_top_clearance() {
+        let bounds = Bounds::new(
+            point(px(0.0), px(super::super::TOP_BAR_TABS_HEIGHT)),
+            gpui::size(px(600.0), px(400.0)),
+        );
+        let tab_bottom =
+            (super::super::TOP_BAR_TABS_HEIGHT + super::super::TOP_BAR_TAB_HEIGHT) * 0.5;
+        let inner = canvas_inner_bounds(bounds, 1.0, 1.0);
+        let pane_top = inner.top().as_f32() + PANE_INSET;
+        assert_eq!(pane_top - tab_bottom, CANVAS_INSET + PANE_INSET);
+        assert_eq!(inner.left().as_f32() + PANE_INSET, pane_top - tab_bottom);
+        for progress in [0.0, 0.25, 0.5, 0.75, 1.0] {
+            let inner = canvas_inner_bounds(bounds, 1.0, progress);
+            let (agent_top, _) = agent_vertical_insets(1.0, false, 0.0, progress);
+            assert_eq!(bounds.top() + px(agent_top), inner.top() + px(PANE_INSET));
+            assert_eq!(inner.bottom(), bounds.bottom() - px(CANVAS_INSET));
+            for strip in surround_strips(bounds, inner) {
+                let overlap = strip.intersect(&inner);
+                assert!(overlap.size.width <= px(0.0) || overlap.size.height <= px(0.0));
+            }
+        }
+        assert_eq!(canvas_top_inset(0.0, 1.0), 0.0);
     }
 
     #[test]
@@ -625,7 +703,7 @@ mod tests {
             });
             assert_eq!(cx.debug_bounds("fixed-composer").unwrap(), fixed);
             let clip = cx.debug_bounds("input-reveal-clip").unwrap();
-            assert_eq!(clip.bottom(), px(58.0));
+            assert_eq!(clip.bottom(), px(59.0));
             assert_eq!(clip.size.height, px(44.0));
         }
     }
@@ -684,12 +762,12 @@ mod tests {
         cx.simulate_resize(size(px(500.0), px(400.0)));
         let island = cx.debug_bounds("island-frame").unwrap();
         for (progress, visible, expected_output) in [
-            (0.1, true, 244.0),
-            (0.7, true, 244.0),
-            (1.0, true, 244.0),
-            (0.6, false, 244.0),
-            (0.8, true, 244.0),
-            (1.0, true, 244.0),
+            (0.1, true, 247.0),
+            (0.7, true, 247.0),
+            (1.0, true, 247.0),
+            (0.6, false, 247.0),
+            (0.8, true, 247.0),
+            (1.0, true, 247.0),
             (0.0, false, 300.0),
         ] {
             view.update(cx, |view, cx| {
@@ -790,7 +868,7 @@ mod tests {
     #[test]
     fn chrome_surround_never_paints_the_terminal_interior() {
         let bounds = Bounds::new(point(px(10.0), px(20.0)), gpui::size(px(600.0), px(400.0)));
-        let strips = surround_strips(bounds, canvas_inset(bounds, 1.0));
+        let strips = surround_strips(bounds, bounds.inset(canvas_inset(bounds, 1.0)));
         let contains = |x: f32, y: f32| {
             let p = point(px(x), px(y));
             strips.iter().any(|strip| strip.contains(&p))
@@ -803,7 +881,7 @@ mod tests {
         }
         assert_eq!(canvas_inset(bounds, 0.0), px(0.0));
         assert!(
-            surround_strips(bounds, px(0.0))
+            surround_strips(bounds, bounds)
                 .iter()
                 .all(|strip| strip.size.width == px(0.0) || strip.size.height == px(0.0))
         );

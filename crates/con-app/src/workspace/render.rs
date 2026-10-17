@@ -838,7 +838,13 @@ impl Render for ConWorkspace {
             .min_h_0()
             .map(|area| {
                 #[cfg(target_os = "macos")]
-                let area = area.relative().m(px(frame::CANVAS_INSET * canvas_depth));
+                let area = area
+                    .relative()
+                    .m(px(frame::CANVAS_INSET * canvas_depth))
+                    .mt(px(frame::canvas_top_inset(
+                        canvas_depth,
+                        tab_strip_progress,
+                    )));
                 area
             })
             .child(pane_content);
@@ -854,6 +860,11 @@ impl Render for ConWorkspace {
         }
 
         let input_bar_reserved_for_layout = self.input_bar_visible || input_bar_progress > 0.0;
+        let full_input_bar_height = if input_bar_reserved_for_layout {
+            self.input_bar.read(cx).rendered_height(cx).as_f32()
+        } else {
+            0.0
+        };
         #[cfg(target_os = "macos")]
         let input_popup_progress = if input_bar_reserved_for_layout {
             1.0
@@ -864,7 +875,6 @@ impl Render for ConWorkspace {
         let input_popup_progress = input_bar_progress;
 
         if input_bar_reserved_for_layout {
-            let full_input_bar_height = self.input_bar.read(cx).rendered_height(cx).as_f32();
             #[cfg(not(target_os = "macos"))]
             {
                 let input_bar_height = full_input_bar_height * input_bar_progress;
@@ -962,14 +972,12 @@ impl Render for ConWorkspace {
                         ),
                     )
                     .child(
-                        frame::surface_edge(
+                        frame::card_edge(
                             frame::INPUT_RADIUS * canvas_depth,
-                            theme
-                                .foreground
-                                .opacity(if theme.is_dark() { 0.16 } else { 0.10 }),
-                            true,
+                            theme.foreground,
+                            theme.is_dark(),
                         )
-                        .bottom(px(frame::INPUT_ISLAND_INSET * canvas_depth))
+                        .bottom(px(frame::INPUT_BOTTOM_INSET * canvas_depth))
                         .left(px(
                             (island_left - frame::CANVAS_INSET * canvas_depth).max(0.0)
                         ))
@@ -991,6 +999,7 @@ impl Render for ConWorkspace {
             .child(self.canvas_surround.render(
                 top_bar_surface_color,
                 canvas_depth,
+                tab_strip_progress,
                 0.0,
                 terminal_surface_color.opacity(self.terminal_opacity),
             ))
@@ -1131,7 +1140,13 @@ impl Render for ConWorkspace {
                             let (top, bottom) = frame::agent_vertical_insets(
                                 canvas_depth,
                                 split,
-                                input_bar_reserved_for_layout,
+                                frame::input_reserved_height(
+                                    full_input_bar_height,
+                                    self.input_bar_visible,
+                                    input_bar_progress,
+                                    canvas_depth,
+                                ),
+                                tab_strip_progress,
                             );
                             panel
                                 .px(px(frame::CANVAS_INSET))

@@ -7,12 +7,17 @@ canvas with 2pt of breathing room. Its native viewport stays rectangular;
 rounded corners belong to the terminal cards, not a second enclosing mask. Terminal cards,
 including a single pane, use 3pt insets and the same 8pt corners within that
 canvas. In clean mode, a single terminal returns to zero inset and zero radius.
+Horizontal tabs already include bottom clearance inside their fixed-height row.
+Subtract that clearance from the canvas's top margin as the strip appears, so
+the visible tab-to-pane gap matches the 5pt lateral outer inset. Keep caption
+height and tab/control centering unchanged. The native clip, gutter paint and
+agent panel top use the same top geometry.
 The original divider hit
 targets remain available between them. Following maintainer feedback on 2026-10-17,
-this prototype uses restrained, one-physical-pixel outlines on panes, the input
-tray. Terminal cards use a fine edge without extra dark corner shading. The
-input tray, agent composer and hover details add a short contact shade directed
-toward the lower right. Three exterior contour bands fade over three physical
+this prototype uses the same restrained, one-physical-pixel outline on panes,
+the input tray and agent composer, with 8pt corners and no contact shade.
+Hover details alone add a short contact shade directed toward the lower right.
+Three exterior contour bands fade over three physical
 pixels; they share the surface's inner rounded boundary. This avoids hard
 rectangular cutoffs through the corner penumbra. The outer canvas has no additional
 outline.
@@ -24,10 +29,15 @@ design, not permission to frame every control.
 Pane titles align to the leading edge and surface tabs use the UI font, without
 a nested track or redundant surface count. Their close and rename actions stay
 in the same pane-local scope.
+Resize feedback uses a centered 2pt by 28pt rounded grip within the 7pt gutter,
+not a full-length active line. It appears on hover and stays visible while
+dragging without changing geometry. The full gutter remains draggable; small
+panes shorten the grip rather than overflowing their shared edge.
 
 The agent panel is base chrome, like the left sidebar: no enclosing frame,
-rounded card fill or shadow. Its content aligns with terminal-card and input-tray
-endpoints; only its composer is raised. Do not nest the conversation inside a
+rounded card fill or shadow. Its composer bottom aligns with the terminal-card
+bottom, including when the bottom tray is reserved. The composer adds no second
+bottom padding inside this baseline; only its fill and fine edge lift it. Do not nest the conversation inside a
 second floating card.
 Compact-tab details use a stable tile anchor and one opaque, rounded material.
 The title and identity icon share one row, with the pane count at its trailing
@@ -38,7 +48,10 @@ SSH and unread state use a separate footer only when present. Long paths wrap
 and the card scrolls rather than silently dropping pane details.
 
 The input tray spans the terminal column and aligns with the pane cards, with
-5pt total horizontal inset, 6pt bottom clearance and 8pt corners. It is not a
+5pt total horizontal inset and 8pt corners. Pane-to-pane, pane-to-tray and
+tray-to-window-bottom gaps are all 7pt at the decorated endpoint. The existing
+1pt split divider plus two 3pt pane insets define that rhythm. The tray sits
+5pt above the inner canvas bottom, plus the 2pt canvas inset. It is not a
 centered, capped-width field inside a full-width terminal-colored strip.
 Its popovers share that geometry. The tray uses a lifted Window Chrome fill;
 the space around it belongs to the workspace, not a second native terminal

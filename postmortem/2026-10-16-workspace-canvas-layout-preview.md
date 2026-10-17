@@ -323,8 +323,44 @@ native presentation timing, terminal opacity or pane layout.
 
 The final revision passed 33 focused pane/frame tests, strict Clippy, formatting
 and the app build. Unified was rebuilt and inspected in the configured light
-theme. A separate preview issue was observed: some initial chrome/content stayed
-stale until a window resize; the agent composer was not visible in that final
-state. This corner-geometry fix does not establish that those initial-layout
-problems are resolved. Portable runtime and dark-theme inspection remain outside
+theme. Some initial chrome/content appeared stale until a window resize; this
+corner-geometry fix does not establish that initial-layout behavior is resolved.
+The agent composer being absent while the bottom tray was visible was expected:
+those input locations are mutually exclusive, not a missing-composer defect.
+Portable runtime and dark-theme inspection remain outside
 this validation.
+
+### Shared gutters and composer baseline
+
+The terminal split gutter was 7pt (two 3pt insets and a 1pt divider), but the
+pane-to-tray gap was 9pt and the tray-to-window clearance was 8pt. The agent
+composer also added its own bottom padding below the workspace's inset.
+Use the existing 7pt split rhythm for all three gaps. Derive the tray's viewport
+reservation from its height and those clearances, rather than doubling a margin
+that serves a different purpose. The right composer adds no second bottom
+padding and follows the terminal card baseline, including the reserved tray
+height. Pane cards, command tray and agent composer share an 8pt radius and a
+single fine-edge treatment; only hover popovers retain contact shading. These
+changes are macOS-scoped; portable styles and rendering paths are unchanged.
+Resize feedback also now occupies that same gutter: a centered short rounded
+grip replaces the full-length active line. Hover and drag change only its fill;
+the complete 7pt gutter remains clickable and a layout/interaction regression
+test checks both axes and a click well outside the visible grip.
+Horizontal tabs contributed another 2pt below their capsule, making the visible
+tab-to-pane gap larger than the lateral outer inset. The canvas top margin now
+subtracts that existing clearance while retaining caption height and centered
+tab controls. Its gutter paint, native viewport and agent-panel top share the
+same geometry; bottom clearance is independent and remains unchanged.
+
+Verification: 37 of 38 focused macOS tests passed in the first completed run.
+The remaining reveal-reversal test still expected the old 56pt reservation;
+after updating its explicit expected viewport from 244pt to 247pt for the new
+53pt reservation, its isolated rerun passed. Grip geometry/full-gutter clicks,
+scaled composer bounds/submission and linked native clipping passed. Strict
+Clippy, formatting, diff checks and the app build passed. Unified was rebuilt;
+light-theme inspection confirmed the right-composer baseline and the tightened
+horizontal-tab clearance. Background startup initially retained partial chrome;
+a process sample showed an idle main run loop and the socket reported ready
+shells. Clicking the blank titlebar activated the window and completed its
+visible content. No general initial-paint fix is claimed here. Portable runtime,
+dark-theme runtime and high-speed motion remain unverified.

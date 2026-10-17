@@ -21,6 +21,54 @@ const RESTORED_SCREEN_TEXT_MAX_LINES: usize = 600;
 const RESTORED_SCREEN_TEXT_MAX_BYTES: usize = 128 * 1024;
 const EDITOR_MERGED_BAR_HEIGHT: f32 = 28.0;
 
+#[cfg(target_os = "macos")]
+fn pane_resize_handle(
+    id: SplitId,
+    direction: SplitDirection,
+    active: bool,
+    foreground: Hsla,
+    dark: bool,
+) -> Stateful<Div> {
+    let group: SharedString = format!("pane-resize-{id}").into();
+    let grip = div()
+        .debug_selector(|| "pane-resize-grip".into())
+        .rounded_full()
+        .bg(foreground.opacity(if active { 0.34 } else { 0.0 }))
+        .group_hover(group.clone(), |s| {
+            s.bg(foreground.opacity(if active {
+                0.34
+            } else if dark {
+                0.24
+            } else {
+                0.18
+            }))
+        });
+    let handle = div()
+        .id(("pane-resize-hitbox", id))
+        .debug_selector(|| "pane-resize-hitbox".into())
+        .group(group)
+        .absolute()
+        .flex()
+        .items_center()
+        .justify_center();
+    match direction {
+        SplitDirection::Horizontal => handle
+            .top_0()
+            .bottom_0()
+            .left(px(-crate::workspace::frame::PANE_INSET))
+            .w(px(crate::workspace::frame::CARD_GAP))
+            .cursor_col_resize()
+            .child(grip.w(px(2.0)).h(px(28.0)).max_h(relative(0.35))),
+        SplitDirection::Vertical => handle
+            .left_0()
+            .right_0()
+            .top(px(-crate::workspace::frame::PANE_INSET))
+            .h(px(crate::workspace::frame::CARD_GAP))
+            .cursor_row_resize()
+            .child(grip.h(px(2.0)).w(px(28.0)).max_w(relative(0.35))),
+    }
+}
+
 struct EditorChromeState {
     show_pane_controls: bool,
     can_drag: bool,
@@ -1938,7 +1986,7 @@ impl PaneTree {
         toggle_zoom_cb: PaneCallback,
         rename_editor: Option<SurfaceRenameEditor>,
         divider_color: Hsla,
-        resize_cover_color: Hsla,
+        _resize_cover_color: Hsla,
         active_drag_split_id: Option<SplitId>,
         tree_has_splits: bool,
         zoomed_pane_id: Option<PaneId>,
@@ -2014,7 +2062,7 @@ impl PaneTree {
                     toggle_zoom_cb_first,
                     rename_editor_first,
                     divider_color,
-                    resize_cover_color,
+                    _resize_cover_color,
                     active_drag_split_id,
                     tree_has_splits,
                     zoomed_pane_id,
@@ -2037,7 +2085,7 @@ impl PaneTree {
                     toggle_zoom_cb_second,
                     rename_editor_second,
                     divider_color,
-                    resize_cover_color,
+                    _resize_cover_color,
                     active_drag_split_id,
                     tree_has_splits,
                     zoomed_pane_id,
@@ -2053,6 +2101,15 @@ impl PaneTree {
                 let is_active_drag_divider = active_drag_split_id == Some(sid);
                 let divider = match dir {
                     SplitDirection::Horizontal => {
+                        #[cfg(target_os = "macos")]
+                        let handle = pane_resize_handle(
+                            sid,
+                            dir,
+                            is_active_drag_divider,
+                            cx.theme().foreground,
+                            cx.theme().is_dark(),
+                        );
+                        #[cfg(not(target_os = "macos"))]
                         let handle = div()
                             .absolute()
                             .top_0()
@@ -2061,7 +2118,7 @@ impl PaneTree {
                             .w(px(5.0))
                             .cursor_col_resize()
                             .bg(if is_active_drag_divider && !cfg!(target_os = "macos") {
-                                resize_cover_color
+                                _resize_cover_color
                             } else {
                                 gpui::transparent_black()
                             });
@@ -2072,22 +2129,6 @@ impl PaneTree {
                             .h_full()
                             .flex_shrink_0()
                             .bg(divider_color)
-                            .when(cfg!(target_os = "macos"), |divider| {
-                                divider.child(
-                                    div()
-                                        .absolute()
-                                        .top(px(9.0))
-                                        .bottom(px(9.0))
-                                        .left_0()
-                                        .w(px(1.0))
-                                        .rounded_full()
-                                        .bg(if is_active_drag_divider {
-                                            resize_cover_color
-                                        } else {
-                                            gpui::transparent_black()
-                                        }),
-                                )
-                            })
                             .child(handle.on_mouse_down(
                                 MouseButton::Left,
                                 move |event: &MouseDownEvent, window, cx| {
@@ -2098,6 +2139,15 @@ impl PaneTree {
                             ))
                     }
                     SplitDirection::Vertical => {
+                        #[cfg(target_os = "macos")]
+                        let handle = pane_resize_handle(
+                            sid,
+                            dir,
+                            is_active_drag_divider,
+                            cx.theme().foreground,
+                            cx.theme().is_dark(),
+                        );
+                        #[cfg(not(target_os = "macos"))]
                         let handle = div()
                             .absolute()
                             .left_0()
@@ -2106,7 +2156,7 @@ impl PaneTree {
                             .h(px(5.0))
                             .cursor_row_resize()
                             .bg(if is_active_drag_divider && !cfg!(target_os = "macos") {
-                                resize_cover_color
+                                _resize_cover_color
                             } else {
                                 gpui::transparent_black()
                             });
@@ -2117,22 +2167,6 @@ impl PaneTree {
                             .w_full()
                             .flex_shrink_0()
                             .bg(divider_color)
-                            .when(cfg!(target_os = "macos"), |divider| {
-                                divider.child(
-                                    div()
-                                        .absolute()
-                                        .left(px(9.0))
-                                        .right(px(9.0))
-                                        .top_0()
-                                        .h(px(1.0))
-                                        .rounded_full()
-                                        .bg(if is_active_drag_divider {
-                                            resize_cover_color
-                                        } else {
-                                            gpui::transparent_black()
-                                        }),
-                                )
-                            })
                             .child(handle.on_mouse_down(
                                 MouseButton::Left,
                                 move |event: &MouseDownEvent, window, cx| {
@@ -3243,17 +3277,10 @@ impl PaneTree {
                             radius / crate::workspace::frame::PANE_RADIUS,
                         ))
                         .child(
-                            crate::workspace::frame::surface_edge(
+                            crate::workspace::frame::card_edge(
                                 radius,
-                                theme
-                                    .foreground
-                                    .opacity(match (theme.is_dark(), is_focused) {
-                                        (true, true) => 0.14,
-                                        (true, false) => 0.085,
-                                        (false, true) => 0.09,
-                                        (false, false) => 0.055,
-                                    }),
-                                false,
+                                theme.foreground,
+                                theme.is_dark(),
                             )
                             .inset(px(inset)),
                         )
@@ -3674,6 +3701,71 @@ impl PaneTree {
 mod tests {
     use super::*;
     use ::core::prelude::v1::test;
+
+    #[cfg(target_os = "macos")]
+    #[gpui::test]
+    fn resize_grip_is_centered_and_keeps_the_full_gutter_clickable(cx: &mut gpui::TestAppContext) {
+        struct GripView {
+            direction: SplitDirection,
+            active: bool,
+            pressed: usize,
+        }
+        impl Render for GripView {
+            fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+                let divider = div().absolute().map(|divider| match self.direction {
+                    SplitDirection::Horizontal => {
+                        divider.left(px(99.5)).top_0().w(px(1.0)).h_full()
+                    }
+                    SplitDirection::Vertical => divider.top(px(59.5)).left_0().h(px(1.0)).w_full(),
+                });
+                div().relative().w(px(200.0)).h(px(120.0)).child(
+                    divider.child(
+                        pane_resize_handle(0, self.direction, self.active, gpui::black(), false)
+                            .on_mouse_down(
+                                MouseButton::Left,
+                                cx.listener(|this, _, _, cx| {
+                                    this.active = true;
+                                    this.pressed += 1;
+                                    cx.notify();
+                                }),
+                            ),
+                    ),
+                )
+            }
+        }
+        let (view, cx) = cx.add_window_view(|_, _| GripView {
+            direction: SplitDirection::Horizontal,
+            active: false,
+            pressed: 0,
+        });
+        for direction in [SplitDirection::Horizontal, SplitDirection::Vertical] {
+            view.update(cx, |view, cx| {
+                view.direction = direction;
+                view.active = false;
+                cx.notify();
+            });
+            let grip = cx.debug_bounds("pane-resize-grip").unwrap();
+            let hitbox = cx.debug_bounds("pane-resize-hitbox").unwrap();
+            assert_eq!(grip.center(), point(px(100.0), px(60.0)));
+            assert_eq!(grip.center(), hitbox.center());
+            let click = match direction {
+                SplitDirection::Horizontal => {
+                    assert_eq!(grip.size, size(px(2.0), px(28.0)));
+                    assert_eq!(hitbox.size, size(px(7.0), px(120.0)));
+                    point(hitbox.center().x, px(4.0))
+                }
+                SplitDirection::Vertical => {
+                    assert_eq!(grip.size, size(px(28.0), px(2.0)));
+                    assert_eq!(hitbox.size, size(px(200.0), px(7.0)));
+                    point(px(4.0), hitbox.center().y)
+                }
+            };
+            cx.simulate_click(click, Modifiers::default());
+            view.read_with(cx, |view, _| assert!(view.active));
+            assert_eq!(cx.debug_bounds("pane-resize-grip").unwrap(), grip);
+        }
+        view.read_with(cx, |view, _| assert_eq!(view.pressed, 2));
+    }
 
     #[cfg(target_os = "macos")]
     struct SinglePaneClipTestView {

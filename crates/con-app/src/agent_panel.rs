@@ -5012,6 +5012,16 @@ impl Render for AgentPanel {
                     .px(mono_space_px(theme, 12.0))
                     .pt(mono_space_px(theme, 8.0))
                     .pb(mono_space_px(theme, 8.0))
+                    .map(|composer| {
+                        #[cfg(target_os = "macos")]
+                        {
+                            composer.px(px(crate::workspace::frame::PANE_INSET)).pb_0()
+                        }
+                        #[cfg(not(target_os = "macos"))]
+                        {
+                            composer
+                        }
+                    })
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                         let key = event.keystroke.key.as_str();
                         let has_completions = !this.filtered_inline_skills(cx).is_empty();
@@ -5097,20 +5107,17 @@ impl Render for AgentPanel {
                                 #[cfg(target_os = "macos")]
                                 {
                                     surface
+                                        .rounded(px(crate::workspace::frame::PANE_RADIUS))
                                         .bg(theme.title_bar.blend(if theme.is_dark() {
                                             theme.foreground.opacity(0.10)
                                         } else {
                                             gpui::white().opacity(0.55)
                                         }))
                                         .child(
-                                            crate::workspace::frame::surface_edge(
-                                                mono_space_px(theme, 12.0).as_f32(),
-                                                theme.foreground.opacity(if theme.is_dark() {
-                                                    0.12
-                                                } else {
-                                                    0.075
-                                                }),
-                                                true,
+                                            crate::workspace::frame::card_edge(
+                                                crate::workspace::frame::PANE_RADIUS,
+                                                theme.foreground,
+                                                theme.is_dark(),
                                             )
                                             .inset_0(),
                                         )
@@ -5719,6 +5726,18 @@ mod tests {
             let send = view.debug_bounds("agent-composer-send").unwrap();
             assert!(surface.left() > gpui::px(0.0));
             assert!(surface.right() < gpui::px(width));
+            #[cfg(target_os = "macos")]
+            {
+                assert_eq!(surface.bottom(), gpui::px(500.0));
+                assert_eq!(
+                    surface.left(),
+                    gpui::px(crate::workspace::frame::PANE_INSET)
+                );
+                assert_eq!(
+                    surface.right(),
+                    gpui::px(width - crate::workspace::frame::PANE_INSET)
+                );
+            }
             assert!(field.size.width > gpui::px(0.0));
             assert!(field.right() <= send.left());
             assert!(send.right() < surface.right());
