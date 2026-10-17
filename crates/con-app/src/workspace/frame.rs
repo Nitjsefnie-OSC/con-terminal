@@ -298,10 +298,13 @@ fn corner_cutouts(bounds: Bounds<Pixels>, radius: f32, scale: f32) -> Vec<gpui::
     if r <= px(0.0) {
         return Vec::new();
     }
-    // Independent AA masks are not complementary under source-over. Extend
-    // only the corner cutout one physical pixel inward to cover that fringe.
+    // Independent AA masks are not complementary under source-over. Keep
+    // one physical pixel of overlap at the diagonal, but preserve the exact
+    // edge endpoints and their tangents: an inset arc adds a step at each end.
     let band = px(1.0 / scale.max(1.0)).min(r);
-    let c = (r - band) * 0.552_284_8;
+    // At t=0.5 each control contributes 3/8 to each coordinate. Moving
+    // both controls by 4*sqrt(2)/3 gives one pixel of diagonal overlap.
+    let c = (r * 0.552_284_8 - band * 1.885_618_1).max(px(0.0));
     let mut corners = Vec::with_capacity(4);
     for (origin, x_sign, y_sign) in [
         (bounds.origin, 1.0, 1.0),
@@ -313,9 +316,7 @@ fn corner_cutouts(bounds: Bounds<Pixels>, radius: f32, scale: f32) -> Vec<gpui::
         let mut path = PathBuilder::fill();
         path.move_to(origin);
         path.line_to(at(r, px(0.0)));
-        path.line_to(at(r, band));
-        path.cubic_bezier_to(at(band, r), at(r - c, band), at(band, r - c));
-        path.line_to(at(px(0.0), r));
+        path.cubic_bezier_to(at(px(0.0), r), at(r - c, px(0.0)), at(px(0.0), r - c));
         path.close();
         if let Ok(path) = path.build() {
             corners.push(path);
@@ -836,6 +837,11 @@ mod tests {
             };
             assert!(contains(0.1, 0.1));
             assert!(contains(2.64, 2.64), "missing AA overlap at {scale}x");
+            let near = 0.25 / scale;
+            assert!(
+                !contains(PANE_RADIUS - near, near) && !contains(near, PANE_RADIUS - near),
+                "AA overlap must taper to the straight edges at {scale}x"
+            );
             assert!(!contains(8.0, 8.0), "corner painted terminal interior");
         }
         assert!(corner_cutouts(bounds, 0.0, 2.0).is_empty());

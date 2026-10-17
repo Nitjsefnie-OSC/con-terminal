@@ -309,3 +309,22 @@ alpha fills. Windows/Linux runtime, dark-theme runtime, high-speed presentation
 and frame-rate measurements remain unverified; these results are not acceptance
 of those cases. Production sessions and the user's edited source artwork were
 not modified by this validation.
+
+### Corner-to-edge steps
+
+The next close-up exposed a one-physical-pixel step at pane corners. The AA
+overlap used a translated, smaller arc with short perpendicular segments at
+both endpoints. Those segments broke tangency with the straight card edges.
+The overlap now tapers to the original endpoints: adjusted cubic controls
+retain diagonal coverage without either perpendicular segment. Regression
+checks exercise both edge joins at 1x and 2x while retaining the coverage and
+small-path bounds checks. This changes only cached macOS corner geometry, not
+native presentation timing, terminal opacity or pane layout.
+
+The final revision passed 33 focused pane/frame tests, strict Clippy, formatting
+and the app build. Unified was rebuilt and inspected in the configured light
+theme. A separate preview issue was observed: some initial chrome/content stayed
+stale until a window resize; the agent composer was not visible in that final
+state. This corner-geometry fix does not establish that those initial-layout
+problems are resolved. Portable runtime and dark-theme inspection remain outside
+this validation.

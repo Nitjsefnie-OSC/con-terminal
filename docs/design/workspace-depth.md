@@ -129,12 +129,16 @@ have its old split-sized mask.
   a full-area fill or a window-sized path: GPUI's path compositing cost follows
   the path's bounds even if it has a hole. The caption row owns its own material,
   so docking controls does not double-composite the sidebar background.
-- AppKit clips terminal host layers against that shared rounded rectangle.
+- AppKit clips terminal host layers against the shared rectangular viewport
+  and each leaf's rounded card.
   Rounding a GPUI wrapper alone does not clip its native sibling views.
   A view-backed NSScrollView must first receive its own backing layer when a
   rounded mask is requested. A Metal-backed terminal descendant does not
   guarantee that the scroll host has a layer. Leave the window parent alone.
-- Corner cutouts extend one physical pixel inward over the native mask edge.
+- Corner cutouts overlap the native mask by one physical pixel at the diagonal,
+  tapering to exact, tangent-continuous endpoints at the straight edges.
+  Do not translate an inset arc and connect it with short perpendicular lines:
+  those lines create visible steps where the corner meets the edge.
   Exact complementary antialiased shapes do not produce full coverage under
   source-over compositing. This small overlap is not an outline or an opaque
   terminal backing; the rest of the terminal stays untouched. Leave AppKit's
