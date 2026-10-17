@@ -60,9 +60,10 @@ Expanded vertical navigation owns the macOS caption controls. The toolbar
 occupies its top row while the global caption row gives its height back to
 terminal content. Its material is supplied
 by the sidebar, not by a second translucent header rectangle.
-Compact navigation, hidden navigation, Files/Search and horizontal tabs retain
-the global row. Native traffic lights must never overlap a 44pt rail or a
-terminal pane.
+Files/Search can also own the caption when their combined rail and tool-column
+width fits the window controls. A compact rail on its own, hidden navigation
+and horizontal tabs retain the global row. Native traffic lights must never
+overlap a 44pt rail or a terminal pane.
 The left-sidebar visibility control remains available when docked. The caption
 must fit the traffic lights and all three visibility controls throughout width
 changes. Switching to horizontal tabs restores the global row immediately;
@@ -83,6 +84,9 @@ native layout pending before the next frame; a reused terminal is not a newly
 created surface. The floating drag label uses the same 8pt rounding and UI
 typography as the canvas, with a quiet terminal icon and an opaque fill so it
 stays legible above native content.
+Pane headers, surface tabs and drag labels reuse the existing cached terminal
+identity asset. This identifies the terminal surface without guessing which
+application is running or adding process scans to rendering.
 Drop regions follow the same 2pt inset and 7pt corners as pane cards. Their
 bounds deduct every 1pt split divider. Resizing retains its 5pt hit target but
 shows only a 1pt, inset feedback line on macOS, not a full-height opaque bar.

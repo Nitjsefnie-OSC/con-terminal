@@ -162,6 +162,19 @@ are settled-state checks, not high-speed frame capture or a frame-rate
 benchmark. Portable drop-bound calculations changed to include dividers;
 Windows/Linux runtime acceptance remains unavailable.
 
+The caption follow-up also accounts for the combined rail and Files/Search
+column, rather than treating an open tool column as a 44pt rail. A rail on its
+own still retains the global caption. Pane headers and surface tabs now reuse
+the cached terminal identity asset without process inference during rendering.
+The follow-up passed all 129 focused macOS tests and strict Clippy. The first
+test compilation was interrupted after a prolonged loader wait; the retry
+compiled successfully and completed the tests. No Windows/Linux runtime or
+frame-rate claim follows from these checks.
+The app/CLI build also completed. The updated light-theme preview was inspected
+with Search open: window controls fit above the tool column and terminal
+content reaches the top. A disposable two-pane tab confirmed the new header
+icons and the input island's settled layout; the test tab was then removed.
+
 ## Lessons
 
 Define the canvas, safe area, caption and popover geometry together. Do not call

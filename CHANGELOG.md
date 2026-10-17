@@ -25,6 +25,9 @@ con is still pre-release, so entries may group related beta work while the produ
 - Dragging a pane keeps vertical tabs in the sidebar instead of briefly opening
   a horizontal strip. Pane drag labels, tab details and the floating command
   bar use a more compact, consistent layout.
+- Pane headers and surface tabs share the terminal identity icon. Files and
+  Search also give terminal content the top row when the left column has room
+  for the window controls.
 
 ### Fixed
 

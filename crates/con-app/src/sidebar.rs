@@ -502,11 +502,22 @@ impl SessionSidebar {
 
     #[cfg(target_os = "macos")]
     pub fn caption_dock_progress(&self, visibility: f32, minimum_width: f32) -> f32 {
-        let target_width = self.effective_panel_width();
-        if self.tools_panel_open || self.rail_only_override || target_width <= minimum_width {
+        // Files/Search render a rail plus a tool column whose combined width
+        // is panel_width, even though the tab rail itself is compact.
+        let target_width = if self.tools_panel_open {
+            self.panel_width
+        } else {
+            self.effective_panel_width()
+        };
+        if (!self.tools_panel_open && self.rail_only_override) || target_width <= minimum_width {
             return 0.0;
         }
-        ((self.rendered_width() * visibility - minimum_width) / (target_width - minimum_width))
+        let rendered_width = if self.tools_panel_open {
+            self.panel_width
+        } else {
+            self.rendered_width()
+        };
+        ((rendered_width * visibility - minimum_width) / (target_width - minimum_width))
             .clamp(0.0, 1.0)
     }
 
@@ -2670,7 +2681,7 @@ mod tests {
             sidebar.clear_rail_only_override(cx);
             assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 1.0);
             sidebar.set_tools_panel_open(true, crate::activity_bar::ActivitySlot::Files);
-            assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 0.0);
+            assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 1.0);
             sidebar.set_tools_panel_open(false, crate::activity_bar::ActivitySlot::Files);
             sidebar.set_pinned(false, cx);
             assert!(
@@ -2682,6 +2693,32 @@ mod tests {
             sidebar.set_pinned(true, cx);
             sidebar.width_motion = crate::motion::SidebarMotion::new(0.0);
             assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 0.0);
+        });
+    }
+
+    #[cfg(target_os = "macos")]
+    #[gpui::test]
+    fn tool_columns_dock_the_caption_by_combined_width_not_rail_width(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use gpui::AppContext;
+        let sidebar = cx.new(super::SessionSidebar::new);
+        sidebar.update(cx, |sidebar, _| {
+            for slot in [
+                crate::activity_bar::ActivitySlot::Files,
+                crate::activity_bar::ActivitySlot::Search,
+            ] {
+                sidebar.set_tools_panel_open(true, slot);
+                assert_eq!(sidebar.rendered_width(), super::RAIL_WIDTH);
+                assert_eq!(sidebar.caption_dock_progress(1.0, 168.0), 1.0);
+                assert_eq!(sidebar.caption_dock_progress(0.5, 168.0), 0.0);
+            }
+            sidebar.set_tools_panel_open(false, crate::activity_bar::ActivitySlot::Search);
+            assert_eq!(
+                sidebar.caption_dock_progress(1.0, 168.0),
+                0.0,
+                "a rail alone still needs the global caption"
+            );
         });
     }
 

@@ -2397,7 +2397,23 @@ impl PaneTree {
             .map(|label| {
                 #[cfg(target_os = "macos")]
                 {
-                    label.pl(px(10.0)).pr(title_inset)
+                    label
+                        .pl(px(10.0))
+                        .pr(title_inset)
+                        .flex()
+                        .items_center()
+                        .gap(px(6.0))
+                        .child(
+                            div()
+                                .debug_selector(|| "pane-identity-icon".into())
+                                .size(px(14.0))
+                                .flex_shrink_0()
+                                .child(crate::assets::tab_identity_icon(
+                                    crate::assets::tab_identity_asset("phosphor/terminal.svg"),
+                                    px(14.0),
+                                    title_color,
+                                )),
+                        )
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
@@ -2414,7 +2430,7 @@ impl PaneTree {
                 let title = title.clone();
                 move |window, cx| Tooltip::new(title.clone()).build(window, cx)
             })
-            .child(SharedString::from(title));
+            .child(div().min_w_0().truncate().child(SharedString::from(title)));
         let focus_cb_bar = focus_pane_cb.clone();
         let dragged = DraggedTab {
             session_id,
@@ -3047,13 +3063,11 @@ impl PaneTree {
                     .on_double_click(move |_, window, cx| {
                         rename_cb(sid, window, cx);
                     })
-                    .child(
-                        svg()
-                            .path("phosphor/terminal.svg")
-                            .size(mono_icon_px(theme, 10.0))
-                            .flex_shrink_0()
-                            .text_color(icon_color),
-                    )
+                    .child(crate::assets::tab_identity_icon(
+                        crate::assets::tab_identity_asset("phosphor/terminal.svg"),
+                        mono_icon_px(theme, 12.0),
+                        icon_color,
+                    ))
                     .when_some(editing_input, |tab, input| {
                         tab.child(
                             div().w(px(104.0)).child(

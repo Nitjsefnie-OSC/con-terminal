@@ -353,7 +353,7 @@ impl Render for ConWorkspace {
         let caption = {
             let minimum = frame::caption_minimum_width(top_bar::top_bar_leading_pad(window));
             let sidebar = self.sidebar.read(cx);
-            let eligible = self.vertical_tabs_enabled() && !self.sidebar_tools_open;
+            let eligible = self.vertical_tabs_enabled();
             // A rail-only override preserves the expanded preference. It must
             // not preserve the expanded caption geometry as well.
             self.caption_dock = frame::CaptionLayout::new(if eligible {
@@ -1675,13 +1675,11 @@ impl Render for ConWorkspace {
                     .font_family(theme.font_family.clone())
                     .text_size(px(12.0))
                     .text_color(theme.foreground)
-                    .child(
-                        svg()
-                            .path("phosphor/terminal.svg")
-                            .size(px(13.0))
-                            .flex_shrink_0()
-                            .text_color(theme.muted_foreground),
-                    )
+                    .child(crate::assets::tab_identity_icon(
+                        crate::assets::tab_identity_asset("phosphor/terminal.svg"),
+                        px(14.0),
+                        theme.foreground,
+                    ))
                     .child(
                         div()
                             .flex_1()
