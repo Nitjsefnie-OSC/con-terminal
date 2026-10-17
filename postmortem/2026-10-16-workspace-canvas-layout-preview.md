@@ -381,3 +381,15 @@ including narrow and scaled composer bounds. Formatting, strict Clippy, diff
 checks and the app build passed. The updated Unified light-theme preview shows
 equal 5pt visible leading, trailing and bottom clearance. Windows/Linux runtime,
 dark-theme runtime and high-speed motion were not validated in this follow-up.
+
+### Release readiness
+
+The maintainer accepted the final Unified preview and authorized PR #488 and a
+beta release. A fresh Cargo run passed all 650 app tests, including the previously
+timing-sensitive file watcher tests. All 35 linked Ghostty tests also passed,
+including padding-color defaults and explicit user overrides. Formatting, strict
+Clippy, docs routing validation and the app build passed. Shared application
+identity mapping and bundled glyph coverage now run on native Windows/Linux CI.
+The macOS canvas does not replace those platforms' terminal layout paths.
+This acceptance is not a frame-rate benchmark or certification of the intermittent
+internal-display/battery presentation seam; retain that separate acceptance work.
