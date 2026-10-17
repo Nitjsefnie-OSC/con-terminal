@@ -15,6 +15,11 @@ con is still pre-release, so entries may group related beta work while the produ
   identities. Unknown programs keep the terminal icon; terminal output does not
   determine application identity.
 
+**App Icon**
+
+- Tail A6 uses the updated artwork with its subtle built-in shadow across the
+  app icon picker and platform packaging.
+
 **macOS**
 
 - The terminal sits in a subtly rounded canvas, with an elevated input tray

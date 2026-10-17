@@ -233,6 +233,25 @@ sidebar with colored identities, the outlined tray and the contrasting Neovim
 surface. The earlier preview remained running. No frame capture or portable
 runtime acceptance was performed; visual approval remains with the maintainer.
 
+The subsequent corner feedback exposed two inconsistent construction rules:
+the Gaussian shadow was cut into rectangular exterior strips, excluding the
+part of a rounded corner's penumbra inside its rectangular bounds, and the
+agent panel used a 2pt top inset while split cards started at 5pt. Contact depth
+now uses three faint, nested exterior rounded contours with lower-right lighting,
+without a full-surface path or Gaussian cutoff. Native masks, pane headers,
+surrounds and edges share an 8pt radius. The agent panel follows card and tray
+vertical insets. This replaces the previous shadow construction rather than
+increasing shadow opacity to disguise its seams.
+
+Validation: all 73 focused app, icon, sidebar, pane and frame tests passed again
+after the final drag-radius consistency edit. Strict Clippy, formatting and
+the app build passed. The separate
+Con Canvas Curves preview exercised light and dark Neovim backgrounds under
+light chrome, with pane/agent tops and tray/agent bottoms aligned. The supplied
+Tail A6 PNG was copied byte-for-byte (SHA-256 verified), and the preview ICNS was
+generated from it through the packaging resize sizes. Portable runtime, a dark
+app theme and high-speed motion remain unverified.
+
 ### Input tray feedback
 
 The centered 800pt field and native safe-area extension still read as two

@@ -766,7 +766,10 @@ impl Render for ConWorkspace {
                 let preview_inset = frame::PANE_INSET;
                 #[cfg(not(target_os = "macos"))]
                 let preview_inset = 0.0;
-                let preview_radius = if cfg!(target_os = "macos") { 7.0 } else { 0.0 };
+                #[cfg(target_os = "macos")]
+                let preview_radius = frame::PANE_RADIUS;
+                #[cfg(not(target_os = "macos"))]
+                let preview_radius = 0.0;
                 pane_content = pane_content
                     .child(
                         div()
@@ -1112,7 +1115,18 @@ impl Render for ConWorkspace {
                     .map(|panel| {
                         #[cfg(target_os = "macos")]
                         {
-                            panel.p(px(frame::CANVAS_INSET)).bg(top_bar_surface_color)
+                            let split = self.has_active_tab()
+                                && self.tabs[self.active_tab].pane_tree.pane_count() > 1;
+                            let (top, bottom) = frame::agent_vertical_insets(
+                                canvas_depth,
+                                split,
+                                input_bar_reserved_for_layout,
+                            );
+                            panel
+                                .px(px(frame::CANVAS_INSET))
+                                .pt(px(top))
+                                .pb(px(bottom))
+                                .bg(top_bar_surface_color)
                         }
                         #[cfg(not(target_os = "macos"))]
                         {

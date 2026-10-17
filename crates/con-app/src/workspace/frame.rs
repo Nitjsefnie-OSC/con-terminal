@@ -5,8 +5,19 @@ use std::rc::Rc;
 pub(super) const CANVAS_INSET: f32 = 2.0;
 pub(super) const CANVAS_RADIUS: f32 = 8.0;
 pub(crate) const PANE_INSET: f32 = 3.0;
+pub(crate) const PANE_RADIUS: f32 = 8.0;
 pub(super) const INPUT_ISLAND_INSET: f32 = 6.0;
 pub(super) const INPUT_RADIUS: f32 = 8.0;
+
+pub(super) fn agent_vertical_insets(depth: f32, split: bool, input_reserved: bool) -> (f32, f32) {
+    let top = CANVAS_INSET * depth + if split { PANE_INSET } else { 0.0 };
+    let bottom = if input_reserved {
+        (CANVAS_INSET + INPUT_ISLAND_INSET) * depth
+    } else {
+        top
+    };
+    (top, bottom)
+}
 
 /// Shared fine edge with a short, diagonal contact shadow. Never shade native content.
 pub(crate) fn surface_edge(radius: f32, color: Hsla, raised: bool) -> gpui::Div {
@@ -18,22 +29,26 @@ pub(crate) fn surface_edge(radius: f32, color: Hsla, raised: bool) -> gpui::Div 
             },
             move |_, bounds, window, _| {
                 let width = px(1.0 / window.scale_factor());
-                let shadow =
-                    gpui::BoxShadow::new(px(0.5), px(0.5), gpui::black().opacity(color.a * 0.45))
-                        .blur_radius(px(1.5))
-                        .spread_radius(px(-0.5));
                 if raised {
-                    for strip in exterior_strips(bounds, px(2.0)) {
-                        window.with_content_mask(
-                            Some(gpui::ContentMask { bounds: strip }),
-                            |window| {
-                                window.paint_drop_shadows(
-                                    bounds,
-                                    gpui::Corners::all(px(radius)),
-                                    std::slice::from_ref(&shadow),
-                                );
-                            },
-                        );
+                    // Nested exterior contours share the surface's exact inner
+                    // curve. Rectangular shadow cutoffs leave discontinuities
+                    // where a rounded corner meets a straight edge.
+                    for (step, falloff) in [(1.0, 0.34), (2.0, 0.14), (3.0, 0.04)] {
+                        let outer = bounds.dilate(width * step);
+                        let outer_radius = px(radius) + width * step;
+                        for (strip, direction) in contact_regions(outer, outer_radius, width) {
+                            window.with_content_mask(
+                                Some(gpui::ContentMask { bounds: strip }),
+                                |window| {
+                                    let mut shade = gpui::fill(outer, gpui::transparent_black());
+                                    shade.corner_radii = gpui::Corners::all(outer_radius);
+                                    shade.border_widths = gpui::Edges::all(width);
+                                    shade.border_color =
+                                        gpui::black().opacity(color.a * falloff * direction);
+                                    window.paint_quad(shade);
+                                },
+                            );
+                        }
                     }
                 }
                 // Clip before rasterization: a transparent full-window quad
@@ -54,21 +69,40 @@ pub(crate) fn surface_edge(radius: f32, color: Hsla, raised: bool) -> gpui::Div 
     )
 }
 
-fn exterior_strips(bounds: Bounds<Pixels>, width: Pixels) -> [Bounds<Pixels>; 4] {
-    let outer = bounds.dilate(width);
+fn contact_regions(
+    bounds: Bounds<Pixels>,
+    radius: Pixels,
+    width: Pixels,
+) -> [(Bounds<Pixels>, f32); 8] {
+    let r = radius
+        .max(width)
+        .min(bounds.size.width * 0.5)
+        .min(bounds.size.height * 0.5);
+    let horizontal = (bounds.size.width - r * 2.0).max(px(0.0));
+    let vertical = (bounds.size.height - r * 2.0).max(px(0.0));
+    let rect = |x, y, w, h| Bounds::new(point(x, y), gpui::size(w, h));
     [
-        Bounds::new(outer.origin, gpui::size(outer.size.width, width)),
-        Bounds::new(
-            point(outer.left(), bounds.bottom()),
-            gpui::size(outer.size.width, width),
+        (rect(bounds.left(), bounds.top(), r, r), 0.12),
+        (rect(bounds.right() - r, bounds.top(), r, r), 0.55),
+        (rect(bounds.left(), bounds.bottom() - r, r, r), 0.55),
+        (rect(bounds.right() - r, bounds.bottom() - r, r, r), 1.0),
+        (
+            rect(bounds.left() + r, bounds.top(), horizontal, width),
+            0.12,
         ),
-        Bounds::new(
-            point(outer.left(), bounds.top()),
-            gpui::size(width, bounds.size.height),
+        (
+            rect(
+                bounds.left() + r,
+                bounds.bottom() - width,
+                horizontal,
+                width,
+            ),
+            0.8,
         ),
-        Bounds::new(
-            point(bounds.right(), bounds.top()),
-            gpui::size(width, bounds.size.height),
+        (rect(bounds.left(), bounds.top() + r, width, vertical), 0.12),
+        (
+            rect(bounds.right() - width, bounds.top() + r, width, vertical),
+            0.8,
         ),
     ]
 }
@@ -170,7 +204,7 @@ impl PaneSurround {
                         bounds,
                         depth: 1.0,
                         scale,
-                        corners: corner_cutouts(bounds.inset(inset), 7.0, scale),
+                        corners: corner_cutouts(bounds.inset(inset), PANE_RADIUS, scale),
                     });
                 }
                 (
@@ -460,16 +494,43 @@ mod tests {
     use super::*;
 
     #[test]
-    fn contact_shadow_never_shades_the_native_content() {
+    fn agent_edges_follow_terminal_cards_and_the_visible_input_tray() {
+        for depth in [0.0, 0.5, 1.0] {
+            for split in [false, true] {
+                let (top, bottom) = agent_vertical_insets(depth, split, false);
+                assert_eq!(
+                    top,
+                    CANVAS_INSET * depth + if split { PANE_INSET } else { 0.0 }
+                );
+                assert_eq!(bottom, top);
+                let (with_input_top, with_input_bottom) = agent_vertical_insets(depth, split, true);
+                assert_eq!(with_input_top, top);
+                assert_eq!(
+                    with_input_bottom,
+                    (CANVAS_INSET + INPUT_ISLAND_INSET) * depth
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn contact_contours_remain_outside_the_surface_and_use_small_disjoint_masks() {
         for (width, height) in [(320.0, 44.0), (1200.0, 800.0), (2400.0, 1600.0)] {
             let bounds = Bounds::new(point(px(12.0), px(28.0)), gpui::size(px(width), px(height)));
             let mut area = 0.0;
-            for strip in exterior_strips(bounds, px(2.0)) {
-                let overlap = strip.intersect(&bounds);
-                assert!(overlap.size.width <= px(0.0) || overlap.size.height <= px(0.0));
+            let outer = bounds.dilate(px(0.5));
+            // The border's inner bounds/radius are exactly the original shape.
+            assert_eq!(outer.inset(px(0.5)), bounds);
+            let regions = contact_regions(outer, px(PANE_RADIUS + 0.5), px(0.5));
+            for (i, (strip, _)) in regions.iter().enumerate() {
+                assert!(!strip.contains(&bounds.center()));
+                for (other, _) in &regions[i + 1..] {
+                    let overlap = strip.intersect(other);
+                    assert!(overlap.size.width <= px(0.0) || overlap.size.height <= px(0.0));
+                }
                 area += strip.size.width.as_f32() * strip.size.height.as_f32();
             }
-            assert_eq!(area, (width + 4.0) * (height + 4.0) - width * height);
+            assert!(area < width * 2.0 + height * 2.0 + 300.0);
         }
     }
 

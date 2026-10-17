@@ -4,23 +4,27 @@
 
 On macOS, workspaces with sidebars or multiple tabs use an inset terminal
 canvas. It has 2pt of breathing room and 8pt outer corners. Split panes use 3pt
-insets and 7pt corners within that canvas. The original divider hit targets
-remain available between them. Following maintainer feedback on 2026-10-17,
+insets and the same 8pt corners within that canvas. The original divider hit
+targets remain available between them. Following maintainer feedback on 2026-10-17,
 this prototype uses restrained, one-physical-pixel outlines on panes, the input
-tray and the agent panel. Panes and the tray add a short contact shadow, offset
-0.5pt on both axes with a 1.5pt blur and -0.5pt spread. Its opacity follows the
-edge opacity at 45%; it is not a broad drop shadow. The anchored agent panel
-shares the fine edge but not the elevation. The outer canvas has no additional outline.
+tray and the agent panel. Panes and the tray add a short contact shade directed
+toward the lower right. Three exterior contour bands fade over three physical
+pixels; they share the surface's inner rounded boundary. This avoids hard
+rectangular cutoffs through the corner penumbra. The anchored agent panel
+shares the fine edge but not the elevation. The outer canvas has no additional
+outline.
 Transparent quad paint is clipped to narrow perimeter regions before
-rasterization; shadows paint only in 2pt exterior strips and must not shade
-the terminal interior. Edge geometry snaps to the native terminal's physical
-pixel grid. This is a scoped
-exception to the borderless design, not permission to frame every control.
+rasterization; contact shading uses small corner masks and narrow side masks.
+It must not tint the terminal interior. Edge geometry snaps to the native
+terminal's physical pixel grid. This is a scoped exception to the borderless
+design, not permission to frame every control.
 Pane titles align to the leading edge and surface tabs use the UI font, without
 a nested track or redundant surface count. Their close and rename actions stay
 in the same pane-local scope.
 
-The agent panel uses the same 2pt inset and 8pt outer rounding. Its header,
+The agent panel aligns its top with the terminal cards (2pt canvas inset plus
+3pt for split panes) and its bottom with the visible input tray, or the terminal
+cards when the tray is hidden. It uses the same 8pt outer rounding. Its header,
 conversation and composer belong to one clipped surface, not separate frames.
 Compact-tab details use a stable tile anchor and one opaque, rounded material.
 The title and identity icon share one row, with the pane count at its trailing
@@ -99,7 +103,7 @@ padding. This is loaded before the user's native configuration, not as immutable
 host policy. An explicit `background` or `extend-always` choice stays effective.
 Ghostty's own prompt/powerline safeguards remain in charge; Con does not sample
 terminal pixels or repaint program backgrounds in GPUI.
-Drop regions follow the same 3pt inset and 7pt corners as pane cards. Their
+Drop regions follow the same 3pt inset and 8pt corners as pane cards. Their
 bounds deduct every 1pt split divider. Resizing retains its 5pt hit target but
 shows only a 1pt, inset feedback line on macOS, not a full-height opaque bar.
 

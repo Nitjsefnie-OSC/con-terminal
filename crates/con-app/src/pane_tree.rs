@@ -2462,7 +2462,10 @@ impl PaneTree {
             .map(|bar| {
                 #[cfg(target_os = "macos")]
                 {
-                    bar.child(crate::workspace::frame::pane_header_background(bar_bg, 7.0))
+                    bar.child(crate::workspace::frame::pane_header_background(
+                        bar_bg,
+                        crate::workspace::frame::PANE_RADIUS,
+                    ))
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
@@ -3195,7 +3198,11 @@ impl PaneTree {
                 .iter()
                 .map(|surface| surface.terminal.clone())
                 .collect::<Vec<_>>();
-            let radius = if tree_has_splits { 7.0 } else { 0.0 };
+            let radius = if tree_has_splits {
+                crate::workspace::frame::PANE_RADIUS
+            } else {
+                0.0
+            };
             let pane = col
                 .relative()
                 .id(("terminal-pane-card", pane_id))
@@ -3218,14 +3225,14 @@ impl PaneTree {
                         .child(active.terminal.pane_surround(_surround_color))
                         .child(
                             crate::workspace::frame::surface_edge(
-                                7.0,
+                                crate::workspace::frame::PANE_RADIUS,
                                 theme
                                     .foreground
                                     .opacity(match (theme.is_dark(), is_focused) {
-                                        (true, true) => 0.18,
-                                        (true, false) => 0.10,
-                                        (false, true) => 0.12,
-                                        (false, false) => 0.065,
+                                        (true, true) => 0.14,
+                                        (true, false) => 0.085,
+                                        (false, true) => 0.09,
+                                        (false, false) => 0.055,
                                     }),
                                 true,
                             )
