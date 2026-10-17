@@ -119,6 +119,7 @@ jobs:
         run: |
           cargo test --locked -p con --no-default-features --features con/bin-con-app --bin con-app sidebar::
           cargo test --locked -p con --no-default-features --features con/bin-con-app --bin con-app terminal_geometry::
+          cargo test --locked -p con --no-default-features --features con/bin-con-app --bin con-app terminal_identity::
           cargo test --locked -p con --no-default-features --features con/bin-con-app --bin con-app app_icon::
           cargo test --locked -p con --no-default-features --features con/bin-con-app --bin con-app agent_panel::tests
           cargo test --locked -p con --no-default-features --features con/bin-con-app --bin con-app workspace::render::top_bar
@@ -180,6 +181,7 @@ jobs:
         run: |
           cargo test --locked -p con --bin con sidebar::
           cargo test --locked -p con --bin con terminal_geometry::
+          cargo test --locked -p con --bin con terminal_identity::
           cargo test --locked -p con --bin con app_icon::
           cargo test --locked -p con --bin con agent_panel::tests
           cargo test --locked -p con --bin con workspace::render::top_bar

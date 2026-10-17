@@ -133,8 +133,8 @@ host policy. An explicit `background` or `extend-always` choice stays effective.
 Ghostty's own prompt/powerline safeguards remain in charge; Con does not sample
 terminal pixels or repaint program backgrounds in GPUI.
 Drop regions follow the same 3pt inset and 8pt corners as pane cards. Their
-bounds deduct every 1pt split divider. Resizing retains its 5pt hit target but
-shows only a 1pt, inset feedback line on macOS, not a full-height opaque bar.
+bounds deduct every 1pt split divider. Resizing retains the full gutter hit
+target and shows the short centered grip described above, not a full-height bar.
 
 Every macOS terminal leaf, including an undecorated single pane, updates its
 native pane clip during prepaint. Do not bypass this with a single-pane early
