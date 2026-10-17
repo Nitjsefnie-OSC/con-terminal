@@ -4,7 +4,7 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
-## `v0.1.0-beta.140`
+## `v0.1.0-beta.140` - 2026-10-17
 
 ### Fixed
 
@@ -13,6 +13,12 @@ con is still pre-release, so entries may group related beta work while the produ
 - Pane gutters match the spacing around the terminal and input areas, without
   reducing the divider's drag target or changing the outer card alignment.
   _(PR [#489](https://github.com/nowledge-co/con-terminal/pull/489) by [@wey-gu](https://github.com/wey-gu))_
+
+**Linux**
+
+- Flatpak packaging uses a standard-size Tail A6 icon so AppStream can find it
+  after the artwork update.
+  _(PR [#490](https://github.com/nowledge-co/con-terminal/pull/490) by [@wey-gu](https://github.com/wey-gu))_
 
 ## `v0.1.0-beta.139` - 2026-10-17
 
