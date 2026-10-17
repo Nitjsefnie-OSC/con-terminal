@@ -1,3 +1,4 @@
+use gpui::prelude::FluentBuilder as _;
 use gpui::*;
 use gpui_component::{
     ActiveTheme, Colorize,
@@ -1234,7 +1235,14 @@ impl Render for InputBar {
         let input_cursor = input_state.read(cx).cursor();
         let mono_scale = mono_density_scale(theme);
         let control_size = mono_space_px(theme, crate::input_chrome::CONTROL_SIZE);
-        let mode_icon_size = mono_space_px(theme, 20.0);
+        let mode_icon_size = mono_space_px(
+            theme,
+            if cfg!(target_os = "macos") {
+                18.0
+            } else {
+                20.0
+            },
+        );
         let compact_icon_size = mono_space_px(theme, 14.0);
 
         // ── Mode prefix — icon-only, minimal ──
@@ -1296,15 +1304,23 @@ impl Render for InputBar {
                             .debug_selector(|| "command-pane-scope".into())
                             .tab_stop(false)
                             .size(control_size)
-                            .w(px(96.0 * mono_scale))
+                            .w(px(if cfg!(target_os = "macos") {
+                                88.0
+                            } else {
+                                96.0
+                            } * mono_scale))
                             .h(control_size)
                             .px(px(9.0 * mono_scale))
-                            .rounded(px(14.0 * mono_scale))
+                            .rounded(px(
+                                if cfg!(target_os = "macos") { 6.0 } else { 14.0 } * mono_scale
+                            ))
                             .cursor_pointer()
                             .flex()
                             .items_center()
                             .gap(px(6.0 * mono_scale))
-                            .bg(theme.foreground.opacity(0.035))
+                            .when(!cfg!(target_os = "macos"), |button| {
+                                button.bg(theme.foreground.opacity(0.035))
+                            })
                             .on_click(cx.listener(|this, _, window, cx| {
                                 cx.emit(TogglePaneScopePicker);
                                 this.current_input_state()

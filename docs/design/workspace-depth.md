@@ -3,7 +3,7 @@
 ## Visual hierarchy
 
 On macOS, workspaces with sidebars or multiple tabs use an inset terminal
-canvas. It has 2pt of breathing room and 8pt outer corners. Split panes use 2pt
+canvas. It has 2pt of breathing room and 8pt outer corners. Split panes use 3pt
 insets and 7pt corners within that canvas. The original divider hit targets
 remain available between them; no outlines compete with content. At the
 maintainer's request, this local prototype tests small offset shadows on the
@@ -25,32 +25,24 @@ edge; the path follows below. Keep 12pt horizontal and 10pt vertical padding.
 SSH and unread state use a separate footer only when present. Long paths wrap
 and the card scrolls rather than silently dropping pane details.
 
-The input bar floats on the continuous terminal canvas, rather than sitting in
-a separate chrome strip. A 10pt safe-area inset and 14pt corner radius distinguish
-the composer; its width stops at 800pt and remains centered on wider canvases.
-Its popovers use the same horizontal geometry. Once revealed, the terminal
-viewport reserves the composer's height and safe area so the final row and
-selections remain visible. Only this reserved area receives a terminal-colored native
-material; never paint a second fill over native terminal content. The composer uses
-Window Chrome, while the surrounding safe area uses Terminal Glass opacity.
-Light chrome uses a gentle white lift; dark chrome uses a foreground lift.
-The composer's shadow is a separate passive overlay outside its reveal clip,
-so the clip cannot cut the lower shadow into a hard edge. Sidebar boundaries use the canvas gutter,
-not an additional decorative vertical line.
+The input tray spans the terminal column and aligns with the pane cards, with
+5pt total horizontal inset, 6pt bottom clearance and 8pt corners. It is not a
+centered, capped-width field inside a full-width terminal-colored strip.
+Its popovers share that geometry. The tray uses a lifted Window Chrome fill;
+the space around it belongs to the workspace, not a second native terminal
+material. Its exterior shadow is painted separately from its content clip.
+Pane contact shadows use the same construction at a lower intensity.
+Sidebar boundaries use the canvas gutter, not a decorative vertical line.
 
-Show/hide reveals the fixed composer through a bottom-anchored clip. The
-composer does not translate vertically. The clip covers only the island, not
-its empty surrounding inset. A shallow reveal starts with the text baseline
-visible and fades the complete island together; do not wipe through blank
-bottom padding before showing its controls. The pinned GPUI view-cache key does
-not include inherited opacity, so input caching is used only at the settled,
-fully opaque endpoint. Reveal background and controls as one overlay
-over the current terminal, then reserve output rows once the reveal completes.
-On hide, release those rows while the island is being covered. During that
-short transition the island overlays output; at rest it must not conceal the
-prompt. Never prepare a blank strip before the composer or resize the terminal
-for every mask animation frame.
-Popovers use the fixed composer position, not the mask height.
+Show/hide fades the fixed tray, background and controls together. There is no
+vertical translation or animated height clip. Reserve the final output viewport
+when opening, retain it through closing and reversal, and release it only once
+the tray is fully hidden. In particular, completing a reveal must not trigger
+a second terminal resize. This trades a single viewport change at the opening
+boundary for a stable viewport throughout the fade; it is not a terminal-content
+padding API. The tray must not hide the final terminal row at rest.
+The pinned GPUI view-cache key does not include inherited opacity, so input
+caching is used only at the settled, fully opaque endpoint.
 
 One tab with both sidebars hidden returns to the original clean terminal:
 no canvas inset, no corner mask and no input-island margin. These dimensions
@@ -87,7 +79,7 @@ stays legible above native content.
 Pane headers, surface tabs and drag labels reuse the existing cached terminal
 identity asset. This identifies the terminal surface without guessing which
 application is running or adding process scans to rendering.
-Drop regions follow the same 2pt inset and 7pt corners as pane cards. Their
+Drop regions follow the same 3pt inset and 7pt corners as pane cards. Their
 bounds deduct every 1pt split divider. Resizing retains its 5pt hit target but
 shows only a 1pt, inset feedback line on macOS, not a full-height opaque bar.
 
@@ -112,15 +104,12 @@ have its old split-sized mask.
   terminal backing; the rest of the terminal stays untouched. Leave AppKit's
   container's backing-store composition alone: Con owns host masks, not the
   parent's backing layer.
-- The input safe area has one cached, non-interactive native material view
-  below GPUI. It is confined to the reserved terminal rows, uses the terminal's
-  background and opacity, and shares the canvas mask. It is not a full-window
-  backing and cannot receive mouse input or focus. When the input bar hides,
-  hide this view in the same presentation frame. GPUI retains ownership of the
-  composer and all its controls. A GPUI-colored extension is not interchangeable
-  with this native region: the preview exposed a visible material step between
-  it and the adjacent native terminal, despite equal RGB/opacity inputs.
-  This does not establish the underlying color/compositing cause.
+- The native safe-area view is disabled for the input tray. Its former fill
+  made the input look like a second strip, and appeared as a separate stage at
+  the reveal endpoint. GPUI paints only the reserved workspace gap and tray,
+  never a full-area fill over terminal content. Keep the native safe-area
+  primitive's linked tests until the prototype settles; it is not used to fake
+  terminal translucency behind the tray.
 - The clip path is cached per host. A window-scoped geometry generation
   invalidates otherwise unchanged terminal layouts when the outer canvas moves.
 - Pane headers round only the corners that touch the canvas's top corners.

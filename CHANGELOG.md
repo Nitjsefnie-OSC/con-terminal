@@ -10,16 +10,16 @@ con is still pre-release, so entries may group related beta work while the produ
 
 **macOS**
 
-- The terminal sits in a subtly rounded canvas, with a centered input island
-  above its bottom safe area. Expanded vertical tabs bring window controls into
+- The terminal sits in a subtly rounded canvas, with an elevated input tray
+  aligned to the pane edges. Expanded vertical tabs bring window controls into
   the sidebar, leaving more height for terminal content. Compact navigation
-  takes less vertical space, and the input island reveals in place rather than
+  takes less vertical space, and the input tray fades in place rather than
   sliding the terminal on every animation frame.
   A single tab without sidebars keeps the clean, edge-to-edge terminal layout.
 - Split panes and the agent panel share the canvas's quiet, rounded treatment
   on macOS. Surface tabs use clearer labels, and compact-tab details stay in a
   stable, readable hover card.
-- The floating input bar reveals its background and controls together, without
+- The floating input bar fades its background and controls together, without
   first opening a separate empty strip. Pane clipping also recovers when native
   backing layers change without a layout-size change.
 - Dragging a pane keeps vertical tabs in the sidebar instead of briefly opening

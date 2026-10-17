@@ -4,8 +4,9 @@ use std::rc::Rc;
 
 pub(super) const CANVAS_INSET: f32 = 2.0;
 pub(super) const CANVAS_RADIUS: f32 = 8.0;
-pub(super) const INPUT_ISLAND_INSET: f32 = 10.0;
-const INPUT_ISLAND_MAX_WIDTH: f32 = 800.0;
+pub(crate) const PANE_INSET: f32 = 3.0;
+pub(super) const INPUT_ISLAND_INSET: f32 = 6.0;
+pub(super) const INPUT_RADIUS: f32 = 8.0;
 
 /// Prototype elevation is confined to the existing gutters. It never supplies
 /// a terminal backing or changes the native surface's opacity.
@@ -56,27 +57,21 @@ fn elevation_strips(bounds: Bounds<Pixels>, width: Pixels) -> [Bounds<Pixels>; 4
     ]
 }
 
-/// The island and its popovers share one horizontal geometry, including on
-/// wide windows where the composer stops growing but the terminal does not.
+/// Align the input tray and its popovers with the pane cards, not the window
+/// centre. Include both the outer canvas and inner pane inset.
 pub(super) fn input_island_geometry(width: f32, depth: f32) -> (f32, f32) {
-    let inset = (CANVAS_INSET + INPUT_ISLAND_INSET) * depth;
-    let available = (width - 2.0 * inset).max(0.0);
-    let max_width = width + (INPUT_ISLAND_MAX_WIDTH - width) * depth;
-    let island_width = available.min(max_width.max(0.0));
-    ((width - island_width) * 0.5, island_width)
+    let inset = ((CANVAS_INSET + PANE_INSET) * depth).min(width * 0.5);
+    (inset, (width - 2.0 * inset).max(0.0))
 }
 
 pub(super) fn input_safe_height(height: f32, progress: f32, depth: f32) -> f32 {
     (height + 2.0 * INPUT_ISLAND_INSET * depth) * progress.clamp(0.0, 1.0)
 }
 
-pub(super) fn input_reserved_height(
-    height: f32,
-    visible: bool,
-    animating: bool,
-    depth: f32,
-) -> f32 {
-    if visible && !animating {
+pub(super) fn input_reserved_height(height: f32, visible: bool, progress: f32, depth: f32) -> f32 {
+    // Reserve once when opening and retain the viewport through closing. A
+    // second resize at the reveal endpoint makes one interaction look like two.
+    if visible || progress > 0.0 {
         input_safe_height(height, 1.0, depth)
     } else {
         0.0
@@ -97,19 +92,12 @@ pub(super) fn caption_minimum_width(leading: f32) -> f32 {
 
 pub(super) fn input_reveal_clip(height: f32, progress: f32, depth: f32) -> gpui::Div {
     let progress = progress.clamp(0.0, 1.0);
-    // Start with the text baseline already inside the reveal. A full-height
-    // wipe exposes empty bottom padding before any controls become visible.
-    let reveal = if progress == 0.0 {
-        0.0
-    } else {
-        0.75 + 0.25 * progress
-    };
     gpui::div()
         .absolute()
         .bottom(px(INPUT_ISLAND_INSET * depth))
         .left_0()
         .w_full()
-        .h(px(height * reveal))
+        .h(px(height))
         .opacity(progress)
         .overflow_hidden()
 }
@@ -133,7 +121,7 @@ impl PaneSurround {
             move |bounds, window, _| {
                 let scale = window.scale_factor();
                 let bounds = crate::terminal_geometry::snap_terminal_bounds(bounds, scale);
-                let inset = px(2.0)
+                let inset = px(PANE_INSET)
                     .min(bounds.size.width * 0.5)
                     .min(bounds.size.height * 0.5);
                 let mut cache = cache.borrow_mut();
@@ -450,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    fn floating_input_stays_centered_and_popovers_follow_its_frame() {
+    fn input_tray_and_popovers_align_with_pane_card_edges() {
         for width in [0.0, 20.0, 320.0, 900.0, 1600.0] {
             for depth in [0.0, 0.5, 1.0] {
                 let (left, island) = input_island_geometry(width, depth);
@@ -462,9 +450,9 @@ mod tests {
                 }
             }
         }
-        assert_eq!(input_island_geometry(1600.0, 1.0), (400.0, 800.0));
-        assert_eq!(input_island_geometry(900.0, 1.0), (50.0, 800.0));
-        assert_eq!(input_safe_height(44.0, 1.0, 1.0), 64.0);
+        assert_eq!(input_island_geometry(1600.0, 1.0), (5.0, 1590.0));
+        assert_eq!(input_island_geometry(900.0, 1.0), (5.0, 890.0));
+        assert_eq!(input_safe_height(44.0, 1.0, 1.0), 56.0);
         assert_eq!(input_safe_height(44.0, 0.0, 1.0), 0.0);
     }
 
@@ -485,7 +473,7 @@ mod tests {
     }
 
     #[gpui::test]
-    fn input_reveal_changes_the_clip_not_the_composer_position(cx: &mut gpui::TestAppContext) {
+    fn input_fades_without_wiping_or_moving_the_composer(cx: &mut gpui::TestAppContext) {
         use gpui::{
             Context, InteractiveElement, IntoElement, ParentElement, Render, Window, div, size,
         };
@@ -519,16 +507,13 @@ mod tests {
             });
             assert_eq!(cx.debug_bounds("fixed-composer").unwrap(), fixed);
             let clip = cx.debug_bounds("input-reveal-clip").unwrap();
-            assert_eq!(clip.bottom(), px(54.0));
-            assert!(
-                (clip.size.height.as_f32() - 44.0 * (0.75 + 0.25 * progress)).abs() <= 0.5,
-                "clip height must round to the test window's pixel grid"
-            );
+            assert_eq!(clip.bottom(), px(58.0));
+            assert_eq!(clip.size.height, px(44.0));
         }
     }
 
     #[gpui::test]
-    fn input_reveal_does_not_prepare_an_empty_strip_before_the_island(
+    fn input_viewport_stays_stable_through_reveal_reversal_and_completion(
         cx: &mut gpui::TestAppContext,
     ) {
         use gpui::{
@@ -537,7 +522,6 @@ mod tests {
         struct Reveal {
             progress: f32,
             visible: bool,
-            animating: bool,
         }
         impl Render for Reveal {
             fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
@@ -558,7 +542,7 @@ mod tests {
                             .h(px(input_reserved_height(
                                 44.0,
                                 self.visible,
-                                self.animating,
+                                self.progress,
                                 1.0,
                             )))
                             .flex_shrink_0(),
@@ -578,23 +562,21 @@ mod tests {
         let (view, cx) = cx.add_window_view(|_, _| Reveal {
             progress: 0.0,
             visible: false,
-            animating: false,
         });
         cx.simulate_resize(size(px(500.0), px(400.0)));
         let island = cx.debug_bounds("island-frame").unwrap();
-        for (progress, visible, animating, expected_output) in [
-            (0.1, true, true, 300.0),
-            (0.7, true, true, 300.0),
-            (1.0, true, false, 236.0),
-            (0.6, false, true, 300.0),
-            (0.8, true, true, 300.0),
-            (1.0, true, false, 236.0),
-            (0.0, false, false, 300.0),
+        for (progress, visible, expected_output) in [
+            (0.1, true, 244.0),
+            (0.7, true, 244.0),
+            (1.0, true, 244.0),
+            (0.6, false, 244.0),
+            (0.8, true, 244.0),
+            (1.0, true, 244.0),
+            (0.0, false, 300.0),
         ] {
             view.update(cx, |view, cx| {
                 view.progress = progress;
                 view.visible = visible;
-                view.animating = animating;
                 cx.notify();
             });
             assert_eq!(cx.debug_bounds("island-frame").unwrap(), island);

@@ -3205,7 +3205,11 @@ impl PaneTree {
             div()
                 .relative()
                 .size_full()
-                .p(px(if tree_has_splits { 2.0 } else { 0.0 }))
+                .p(px(if tree_has_splits {
+                    crate::workspace::frame::PANE_INSET
+                } else {
+                    0.0
+                }))
                 .child(pane)
                 .when(tree_has_splits, |container| {
                     container
@@ -3213,9 +3217,9 @@ impl PaneTree {
                         .child(
                             crate::workspace::frame::surface_elevation(
                                 7.0,
-                                if _surround_color.l < 0.5 { 0.12 } else { 0.055 },
+                                if _surround_color.l < 0.5 { 0.28 } else { 0.18 },
                             )
-                            .inset(px(2.0)),
+                            .inset(px(crate::workspace::frame::PANE_INSET)),
                         )
                 })
                 .into_any_element()

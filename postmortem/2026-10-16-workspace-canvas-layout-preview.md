@@ -177,6 +177,28 @@ icons and the input island's settled layout; the test tab was then removed.
 
 ## Lessons
 
+### Input tray feedback
+
+The centered 800pt field and native safe-area extension still read as two
+separate surfaces. Reserving rows only at the reveal endpoint also caused a
+second layout change after the controls appeared. The follow-up replaces that
+composition with a full-column tray aligned to pane edges, an 8pt radius and
+6pt bottom clearance. The tray fades at a fixed size; the viewport is reserved
+at opening and retained until the fade-out completes, including reversals.
+The native safe-area material is disabled rather than recolored to simulate a
+continuous terminal surface. Contact shadows are stronger but remain exterior
+only. This does not claim a new terminal content-padding API or flicker-free
+motion on untested displays.
+
+The final tray revision passed 129 focused macOS tests, strict Clippy, formatting
+and the app build. Light-theme visual inspection caught an overly broad,
+clipped contact shadow; its blur/spread returned to the narrow exterior-only
+construction, with the stronger material contrast and 3pt pane inset retained.
+Keyboard cycling reached all three input modes and hide/show returned the tray
+to its visible endpoint. The preview retained the user's three tabs and split
+panes. Dark-theme runtime inspection, high-speed motion capture and portable
+runtime acceptance were not performed for this revision.
+
 Define the canvas, safe area, caption and popover geometry together. Do not call
 an inset strip a floating composer or treat a unit-test count as visual approval.
 Use small cached corner paths, never a viewport-sized path with a hole. Keep

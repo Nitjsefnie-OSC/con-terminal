@@ -480,7 +480,7 @@ impl Render for ConWorkspace {
         #[cfg(target_os = "macos")]
         let top_bar_surface_color = theme
             .title_bar
-            .blend(theme.foreground.opacity(0.028 * canvas_depth))
+            .blend(theme.foreground.opacity(0.045 * canvas_depth))
             .opacity(ui_surface_opacity);
         #[cfg(not(target_os = "macos"))]
         let input_bar_surface_color = top_bar_surface_color;
@@ -762,7 +762,10 @@ impl Render for ConWorkspace {
                     split_preview_local_rect(regions.incoming, content_bounds);
                 let (seam_left, seam_top, seam_width, seam_height) =
                     split_preview_local_rect(regions.seam, content_bounds);
-                let preview_inset = if cfg!(target_os = "macos") { 2.0 } else { 0.0 };
+                #[cfg(target_os = "macos")]
+                let preview_inset = frame::PANE_INSET;
+                #[cfg(not(target_os = "macos"))]
+                let preview_inset = 0.0;
                 let preview_radius = if cfg!(target_os = "macos") { 7.0 } else { 0.0 };
                 pane_content = pane_content
                     .child(
@@ -886,12 +889,13 @@ impl Render for ConWorkspace {
             #[cfg(target_os = "macos")]
             {
                 let width = (window_width - left_panel_width - agent_panel_outer_width).max(0.0);
-                let (_, island_width) = frame::input_island_geometry(width, canvas_depth);
-                let island = terminal_surface_color
+                let (island_left, island_width) = frame::input_island_geometry(width, canvas_depth);
+                let island = theme
+                    .title_bar
                     .blend(if theme.is_dark() {
-                        theme.foreground.opacity(0.12 * canvas_depth)
+                        theme.foreground.opacity(0.10 * canvas_depth)
                     } else {
-                        gpui::white().opacity(0.16 * canvas_depth)
+                        gpui::white().opacity(0.55 * canvas_depth)
                     })
                     .opacity(ui_surface_opacity);
                 // The pinned view-cache key includes clipping but not inherited
@@ -908,31 +912,29 @@ impl Render for ConWorkspace {
                         )
                         .into_any_element()
                 };
-                // Reveal the whole island over the existing terminal, not over
-                // a blank strip prepared by a separate native view. Once shown,
-                // reserve output rows in one synchronized layout update.
+                // One fixed tray fades as a unit. Reserve its final viewport
+                // immediately instead of resizing again when the fade settles.
                 terminal_area = terminal_area
                     .child(
                         div()
                             .h(px(frame::input_reserved_height(
                                 full_input_bar_height,
                                 self.input_bar_visible,
-                                self.input_bar_motion.is_animating(),
+                                input_bar_progress,
                                 canvas_depth,
                             )))
-                            .flex_shrink_0(),
+                            .flex_shrink_0()
+                            .bg(top_bar_surface_color),
                     )
                     .child(
                         frame::surface_elevation(
-                            14.0 * canvas_depth,
-                            if theme.is_dark() { 0.18 } else { 0.09 },
+                            frame::INPUT_RADIUS * canvas_depth,
+                            if theme.is_dark() { 0.32 } else { 0.20 },
                         )
                         .bottom(px(frame::INPUT_ISLAND_INSET * canvas_depth))
-                        .left(px(((width
-                            - 2.0 * frame::CANVAS_INSET * canvas_depth
-                            - island_width)
-                            * 0.5)
-                            .max(0.0)))
+                        .left(px(
+                            (island_left - frame::CANVAS_INSET * canvas_depth).max(0.0)
+                        ))
                         .w(px(island_width))
                         .h(px(full_input_bar_height))
                         .opacity(input_bar_progress * canvas_depth),
@@ -947,14 +949,12 @@ impl Render for ConWorkspace {
                             div()
                                 .absolute()
                                 .bottom_0()
-                                .left(px(((width
-                                    - 2.0 * frame::CANVAS_INSET * canvas_depth
-                                    - island_width)
-                                    * 0.5)
-                                    .max(0.0)))
+                                .left(px(
+                                    (island_left - frame::CANVAS_INSET * canvas_depth).max(0.0)
+                                ))
                                 .w(px(island_width))
                                 .h(px(full_input_bar_height))
-                                .rounded(px(14.0 * canvas_depth))
+                                .rounded(px(frame::INPUT_RADIUS * canvas_depth))
                                 .bg(island)
                                 .child(input),
                         ),
@@ -973,16 +973,7 @@ impl Render for ConWorkspace {
             .child(self.canvas_surround.render(
                 top_bar_surface_color,
                 canvas_depth,
-                if input_bar_reserved_for_layout {
-                    frame::input_reserved_height(
-                        self.input_bar.read(cx).rendered_height(cx).as_f32(),
-                        self.input_bar_visible,
-                        self.input_bar_motion.is_animating(),
-                        canvas_depth,
-                    )
-                } else {
-                    0.0
-                },
+                0.0,
                 terminal_surface_color.opacity(self.terminal_opacity),
             ))
             .child(terminal_area);
