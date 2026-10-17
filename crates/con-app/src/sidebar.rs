@@ -106,7 +106,14 @@ impl NavigationLayout {
                 new_y,
             ),
         ]
-        .map(|(expanded_x, compact_y)| (mix(8.0, expanded_x), leading + mix(compact_y, 0.0)));
+        .map(|(expanded_x, compact_y)| {
+            let compact_x = if cfg!(target_os = "macos") {
+                (RAIL_WIDTH - RAIL_BUTTON_SIZE) * 0.5
+            } else {
+                8.0
+            };
+            (mix(compact_x, expanded_x), leading + mix(compact_y, 0.0))
+        });
         Self {
             width: mix(RAIL_WIDTH, panel_width),
             row_height: mix(RAIL_ICON_SIZE, row_height),
@@ -3232,6 +3239,20 @@ mod tests {
             });
             let row = cx.debug_bounds("sidebar-session-row").unwrap();
             let icon = cx.debug_bounds("tab-status-brand").unwrap();
+            #[cfg(target_os = "macos")]
+            if t == 0.0 {
+                for selector in [
+                    "tab-sidebar-rail-expand",
+                    "tab-sidebar-rail-files",
+                    "tab-sidebar-rail-search",
+                    "tab-sidebar-rail-new",
+                ] {
+                    assert_eq!(
+                        cx.debug_bounds(selector).unwrap().center().x,
+                        icon.center().x
+                    );
+                }
+            }
             let width = view.read_with(cx, |sidebar, _| sidebar.rendered_width());
             assert!(row.left() >= px(0.0) && row.right() <= px(width));
             assert!((icon.center().y - row.center().y).abs() < px(0.5));

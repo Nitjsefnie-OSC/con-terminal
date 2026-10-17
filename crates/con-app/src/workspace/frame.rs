@@ -8,14 +8,34 @@ pub(crate) const PANE_INSET: f32 = 3.0;
 pub(super) const INPUT_ISLAND_INSET: f32 = 6.0;
 pub(super) const INPUT_RADIUS: f32 = 8.0;
 
-/// One physical pixel, without a background fill or a shadow outside the pane.
-pub(crate) fn surface_outline(radius: f32, color: Hsla) -> gpui::Div {
+/// Shared fine edge with a short, diagonal contact shadow. Never shade native content.
+pub(crate) fn surface_edge(radius: f32, color: Hsla, raised: bool) -> gpui::Div {
     use gpui::ParentElement;
     gpui::div().absolute().child(
         gpui::canvas(
-            |bounds, _, _| bounds,
+            |bounds, window, _| {
+                crate::terminal_geometry::snap_terminal_bounds(bounds, window.scale_factor())
+            },
             move |_, bounds, window, _| {
                 let width = px(1.0 / window.scale_factor());
+                let shadow =
+                    gpui::BoxShadow::new(px(0.5), px(0.5), gpui::black().opacity(color.a * 0.45))
+                        .blur_radius(px(1.5))
+                        .spread_radius(px(-0.5));
+                if raised {
+                    for strip in exterior_strips(bounds, px(2.0)) {
+                        window.with_content_mask(
+                            Some(gpui::ContentMask { bounds: strip }),
+                            |window| {
+                                window.paint_drop_shadows(
+                                    bounds,
+                                    gpui::Corners::all(px(radius)),
+                                    std::slice::from_ref(&shadow),
+                                );
+                            },
+                        );
+                    }
+                }
                 // Clip before rasterization: a transparent full-window quad
                 // would still shade its interior on every frame.
                 for strip in outline_strips(bounds, px(radius), width) {
@@ -32,6 +52,25 @@ pub(crate) fn surface_outline(radius: f32, color: Hsla) -> gpui::Div {
         .absolute()
         .size_full(),
     )
+}
+
+fn exterior_strips(bounds: Bounds<Pixels>, width: Pixels) -> [Bounds<Pixels>; 4] {
+    let outer = bounds.dilate(width);
+    [
+        Bounds::new(outer.origin, gpui::size(outer.size.width, width)),
+        Bounds::new(
+            point(outer.left(), bounds.bottom()),
+            gpui::size(outer.size.width, width),
+        ),
+        Bounds::new(
+            point(outer.left(), bounds.top()),
+            gpui::size(width, bounds.size.height),
+        ),
+        Bounds::new(
+            point(bounds.right(), bounds.top()),
+            gpui::size(width, bounds.size.height),
+        ),
+    ]
 }
 
 fn outline_strips(bounds: Bounds<Pixels>, radius: Pixels, width: Pixels) -> [Bounds<Pixels>; 4] {
@@ -419,6 +458,20 @@ pub(crate) fn pane_header_background(color: Hsla, radius: f32) -> impl IntoEleme
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn contact_shadow_never_shades_the_native_content() {
+        for (width, height) in [(320.0, 44.0), (1200.0, 800.0), (2400.0, 1600.0)] {
+            let bounds = Bounds::new(point(px(12.0), px(28.0)), gpui::size(px(width), px(height)));
+            let mut area = 0.0;
+            for strip in exterior_strips(bounds, px(2.0)) {
+                let overlap = strip.intersect(&bounds);
+                assert!(overlap.size.width <= px(0.0) || overlap.size.height <= px(0.0));
+                area += strip.size.width.as_f32() * strip.size.height.as_f32();
+            }
+            assert_eq!(area, (width + 4.0) * (height + 4.0) - width * height);
+        }
+    }
 
     #[test]
     fn outline_masks_keep_raster_work_on_the_perimeter() {

@@ -927,21 +927,6 @@ impl Render for ConWorkspace {
                             .bg(top_bar_surface_color),
                     )
                     .child(
-                        frame::surface_outline(
-                            frame::INPUT_RADIUS * canvas_depth,
-                            theme
-                                .foreground
-                                .opacity(if theme.is_dark() { 0.16 } else { 0.10 }),
-                        )
-                        .bottom(px(frame::INPUT_ISLAND_INSET * canvas_depth))
-                        .left(px(
-                            (island_left - frame::CANVAS_INSET * canvas_depth).max(0.0)
-                        ))
-                        .w(px(island_width))
-                        .h(px(full_input_bar_height))
-                        .opacity(input_bar_progress * canvas_depth),
-                    )
-                    .child(
                         frame::input_reveal_clip(
                             full_input_bar_height,
                             input_bar_progress,
@@ -957,9 +942,26 @@ impl Render for ConWorkspace {
                                 .w(px(island_width))
                                 .h(px(full_input_bar_height))
                                 .rounded(px(frame::INPUT_RADIUS * canvas_depth))
+                                .overflow_hidden()
                                 .bg(island)
                                 .child(input),
                         ),
+                    )
+                    .child(
+                        frame::surface_edge(
+                            frame::INPUT_RADIUS * canvas_depth,
+                            theme
+                                .foreground
+                                .opacity(if theme.is_dark() { 0.16 } else { 0.10 }),
+                            true,
+                        )
+                        .bottom(px(frame::INPUT_ISLAND_INSET * canvas_depth))
+                        .left(px(
+                            (island_left - frame::CANVAS_INSET * canvas_depth).max(0.0)
+                        ))
+                        .w(px(island_width))
+                        .h(px(full_input_bar_height))
+                        .opacity(input_bar_progress * canvas_depth),
                     );
             }
         }
@@ -1185,6 +1187,7 @@ impl Render for ConWorkspace {
                                 #[cfg(target_os = "macos")]
                                 {
                                     panel
+                                        .relative()
                                         .rounded(px(frame::CANVAS_RADIUS))
                                         .overflow_hidden()
                                         .bg(agent_panel_surface_color)
@@ -1199,7 +1202,28 @@ impl Render for ConWorkspace {
                                     .clone()
                                     .cached(StyleRefinement::default().size_full())
                                     .into_any_element(),
-                            ),
+                            )
+                            .map(|panel| {
+                                #[cfg(target_os = "macos")]
+                                {
+                                    panel.child(
+                                        frame::surface_edge(
+                                            frame::CANVAS_RADIUS,
+                                            theme.foreground.opacity(if theme.is_dark() {
+                                                0.10
+                                            } else {
+                                                0.065
+                                            }),
+                                            false,
+                                        )
+                                        .inset_0(),
+                                    )
+                                }
+                                #[cfg(not(target_os = "macos"))]
+                                {
+                                    panel
+                                }
+                            }),
                     ),
             );
         }

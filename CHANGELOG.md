@@ -33,8 +33,7 @@ con is still pre-release, so entries may group related beta work while the produ
   a horizontal strip. Pane drag labels, tab details and the floating command
   bar use a more compact, consistent layout.
 - Pane headers share application identities with tab navigation. Panes and the
-  input tray use restrained fine edges rather
-  than drop shadows. Files and
+  input tray use restrained fine edges and short contact shadows. Files and
   Search also give terminal content the top row when the left column has room
   for the window controls.
 

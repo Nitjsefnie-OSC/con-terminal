@@ -6,10 +6,15 @@ On macOS, workspaces with sidebars or multiple tabs use an inset terminal
 canvas. It has 2pt of breathing room and 8pt outer corners. Split panes use 3pt
 insets and 7pt corners within that canvas. The original divider hit targets
 remain available between them. Following maintainer feedback on 2026-10-17,
-this prototype replaces shadows with restrained, one-physical-pixel outlines
-on panes and the input tray. The outer canvas has no additional outline.
+this prototype uses restrained, one-physical-pixel outlines on panes, the input
+tray and the agent panel. Panes and the tray add a short contact shadow, offset
+0.5pt on both axes with a 1.5pt blur and -0.5pt spread. Its opacity follows the
+edge opacity at 45%; it is not a broad drop shadow. The anchored agent panel
+shares the fine edge but not the elevation. The outer canvas has no additional outline.
 Transparent quad paint is clipped to narrow perimeter regions before
-rasterization; it must not shade the full terminal interior. This is a scoped
+rasterization; shadows paint only in 2pt exterior strips and must not shade
+the terminal interior. Edge geometry snaps to the native terminal's physical
+pixel grid. This is a scoped
 exception to the borderless design, not permission to frame every control.
 Pane titles align to the leading edge and surface tabs use the UI font, without
 a nested track or redundant surface count. Their close and rename actions stay
@@ -28,8 +33,11 @@ The input tray spans the terminal column and aligns with the pane cards, with
 centered, capped-width field inside a full-width terminal-colored strip.
 Its popovers share that geometry. The tray uses a lifted Window Chrome fill;
 the space around it belongs to the workspace, not a second native terminal
-material. Its fine outline is painted separately from its content clip.
+material. Its fine edge is painted after the tray fill and separately from its
+content clip, so the material cannot hide the edge or cut off the exterior shadow.
 Sidebar boundaries use the canvas gutter, not a decorative vertical line.
+Compact navigation tools and session identities share the rail's centerline;
+their different hit-target sizes must not introduce a horizontal offset.
 
 Show/hide fades the fixed tray, background and controls together. There is no
 vertical translation or animated height clip. Reserve the final output viewport

@@ -3217,7 +3217,7 @@ impl PaneTree {
                     container
                         .child(active.terminal.pane_surround(_surround_color))
                         .child(
-                            crate::workspace::frame::surface_outline(
+                            crate::workspace::frame::surface_edge(
                                 7.0,
                                 theme
                                     .foreground
@@ -3227,6 +3227,7 @@ impl PaneTree {
                                         (false, true) => 0.12,
                                         (false, false) => 0.065,
                                     }),
+                                true,
                             )
                             .inset(px(crate::workspace::frame::PANE_INSET)),
                         )

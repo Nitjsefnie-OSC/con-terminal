@@ -218,6 +218,21 @@ background extending into the bottom padding and rounded corners. The original
 user preview was not restarted or sent test input. Dark-theme runtime inspection,
 Windows/Linux runtime acceptance, and frame-rate measurement remain outstanding.
 
+The next feedback requested a diagonal contact shadow alongside the fine edge.
+The shared edge now uses a 0.5pt offset on both axes, a 1.5pt blur and -0.5pt
+spread, painted only outside content. The agent panel keeps the same edge but
+stays anchored. Inspection also found the tray edge was drawn before its fill
+and compact navigation tools were centered 2pt away from session identities.
+The edge now follows the fill; compact controls use the rail centerline, with
+a rendered-geometry regression assertion. Suspected corner leakage still needs
+visual acceptance; a screenshot alone does not establish its cause.
+
+This follow-up passed all 33 frame/sidebar tests, strict Clippy, formatting and
+the app build. A separate light-theme Material preview exercised compacting the
+sidebar with colored identities, the outlined tray and the contrasting Neovim
+surface. The earlier preview remained running. No frame capture or portable
+runtime acceptance was performed; visual approval remains with the maintainer.
+
 ### Input tray feedback
 
 The centered 800pt field and native safe-area extension still read as two
