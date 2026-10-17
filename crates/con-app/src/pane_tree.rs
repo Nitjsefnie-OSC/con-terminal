@@ -1277,24 +1277,26 @@ impl PaneTree {
                 let ratio = (*ratio).clamp(0.0, 1.0);
                 match direction {
                     SplitDirection::Horizontal => {
-                        let first_width = bounds.size.width * ratio;
-                        let second_width = bounds.size.width - first_width;
+                        let available = (bounds.size.width - px(1.0)).max(px(0.0));
+                        let first_width = available * ratio;
+                        let second_width = available - first_width;
                         let first_bounds =
                             Bounds::new(bounds.origin, size(first_width, bounds.size.height));
                         let second_bounds = Bounds::new(
-                            point(bounds.origin.x + first_width, bounds.origin.y),
+                            point(bounds.origin.x + first_width + px(1.0), bounds.origin.y),
                             size(second_width, bounds.size.height),
                         );
                         Self::collect_pane_bounds(first, first_bounds, result);
                         Self::collect_pane_bounds(second, second_bounds, result);
                     }
                     SplitDirection::Vertical => {
-                        let first_height = bounds.size.height * ratio;
-                        let second_height = bounds.size.height - first_height;
+                        let available = (bounds.size.height - px(1.0)).max(px(0.0));
+                        let first_height = available * ratio;
+                        let second_height = available - first_height;
                         let first_bounds =
                             Bounds::new(bounds.origin, size(bounds.size.width, first_height));
                         let second_bounds = Bounds::new(
-                            point(bounds.origin.x, bounds.origin.y + first_height),
+                            point(bounds.origin.x, bounds.origin.y + first_height + px(1.0)),
                             size(bounds.size.width, second_height),
                         );
                         Self::collect_pane_bounds(first, first_bounds, result);
@@ -2051,7 +2053,7 @@ impl PaneTree {
                             .left(px(-2.0))
                             .w(px(5.0))
                             .cursor_col_resize()
-                            .bg(if is_active_drag_divider {
+                            .bg(if is_active_drag_divider && !cfg!(target_os = "macos") {
                                 resize_cover_color
                             } else {
                                 gpui::transparent_black()
@@ -2063,6 +2065,22 @@ impl PaneTree {
                             .h_full()
                             .flex_shrink_0()
                             .bg(divider_color)
+                            .when(cfg!(target_os = "macos"), |divider| {
+                                divider.child(
+                                    div()
+                                        .absolute()
+                                        .top(px(9.0))
+                                        .bottom(px(9.0))
+                                        .left_0()
+                                        .w(px(1.0))
+                                        .rounded_full()
+                                        .bg(if is_active_drag_divider {
+                                            resize_cover_color
+                                        } else {
+                                            gpui::transparent_black()
+                                        }),
+                                )
+                            })
                             .child(handle.on_mouse_down(
                                 MouseButton::Left,
                                 move |event: &MouseDownEvent, window, cx| {
@@ -2080,7 +2098,7 @@ impl PaneTree {
                             .top(px(-2.0))
                             .h(px(5.0))
                             .cursor_row_resize()
-                            .bg(if is_active_drag_divider {
+                            .bg(if is_active_drag_divider && !cfg!(target_os = "macos") {
                                 resize_cover_color
                             } else {
                                 gpui::transparent_black()
@@ -2092,6 +2110,22 @@ impl PaneTree {
                             .w_full()
                             .flex_shrink_0()
                             .bg(divider_color)
+                            .when(cfg!(target_os = "macos"), |divider| {
+                                divider.child(
+                                    div()
+                                        .absolute()
+                                        .left(px(9.0))
+                                        .right(px(9.0))
+                                        .top_0()
+                                        .h(px(1.0))
+                                        .rounded_full()
+                                        .bg(if is_active_drag_divider {
+                                            resize_cover_color
+                                        } else {
+                                            gpui::transparent_black()
+                                        }),
+                                )
+                            })
                             .child(handle.on_mouse_down(
                                 MouseButton::Left,
                                 move |event: &MouseDownEvent, window, cx| {
@@ -2881,6 +2915,10 @@ impl PaneTree {
             surfaces.len() > 1 || active.owner.is_some() || active.title.is_some();
 
         // No splits → no title bar, no surface strip (single-pane layout)
+        // macOS must still run the pane clip prepaint below. An existing
+        // surface can arrive here after closing a sibling, zooming or moving
+        // into its own tab, and retains its old split mask until cleared.
+        #[cfg(not(target_os = "macos"))]
         if !tree_has_splits && !show_surface_strip {
             return div().size_full().child(terminal).into_any_element();
         }
@@ -3156,7 +3194,15 @@ impl PaneTree {
                 .p(px(if tree_has_splits { 2.0 } else { 0.0 }))
                 .child(pane)
                 .when(tree_has_splits, |container| {
-                    container.child(active.terminal.pane_surround(_surround_color))
+                    container
+                        .child(active.terminal.pane_surround(_surround_color))
+                        .child(
+                            crate::workspace::frame::surface_elevation(
+                                7.0,
+                                if _surround_color.l < 0.5 { 0.12 } else { 0.055 },
+                            )
+                            .inset(px(2.0)),
+                        )
                 })
                 .into_any_element()
         }
@@ -3575,6 +3621,75 @@ mod tests {
     use super::*;
     use ::core::prelude::v1::test;
 
+    #[cfg(target_os = "macos")]
+    struct SinglePaneClipTestView {
+        tree: PaneTree,
+        terminal: Entity<crate::ghostty_view::GhosttyView>,
+    }
+
+    #[cfg(target_os = "macos")]
+    impl Render for SinglePaneClipTestView {
+        fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+            self.tree.render(
+                1,
+                |_, _, _, _| {},
+                |_, _, _| {},
+                |_, _, _| {},
+                |_, _, _| {},
+                |_, _, _| {},
+                |_, _, _| {},
+                |_, _, _| {},
+                None,
+                cx.theme().title_bar,
+                cx.theme().background,
+                None,
+                0.08,
+                false,
+                cx,
+            )
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[gpui::test]
+    fn single_pane_render_clears_a_reused_split_mask(cx: &mut gpui::TestAppContext) {
+        cx.update(gpui_component::init);
+        let app = std::sync::Arc::new(
+            con_ghostty::GhosttyApp::new(
+                None, None, None, None, None, None, None, None, None, None, None, None, None, false,
+            )
+            .expect("native Ghostty app"),
+        );
+        let (view, cx) = cx.add_window_view(|window, cx| {
+            let terminal =
+                cx.new(|cx| crate::ghostty_view::GhosttyView::new(app, None, None, 14.0, cx));
+            let pane = TerminalPane::new(terminal.clone());
+            pane.set_pane_clip(
+                Bounds::new(point(px(100.0), px(0.0)), size(px(200.0), px(300.0))),
+                7.0,
+                window,
+                cx,
+            );
+            SinglePaneClipTestView {
+                tree: PaneTree::new(pane),
+                terminal,
+            }
+        });
+        cx.simulate_resize(size(px(600.0), px(400.0)));
+        view.update(cx, |view, cx| {
+            let (bounds, radius) = view
+                .terminal
+                .read(cx)
+                .pane_clip_for_test()
+                .expect("single pane must execute clip prepaint");
+            assert_eq!(radius, 0.0, "the old split mask must be removed");
+            assert_eq!(
+                bounds,
+                Bounds::new(point(px(0.0), px(0.0)), size(px(600.0), px(400.0)))
+            );
+        });
+    }
+
     struct PaneHeaderTestView {
         width: f32,
         focused: bool,
@@ -3918,6 +4033,41 @@ mod tests {
                 active_surface_id: 0,
             },
         }
+    }
+
+    #[test]
+    fn pane_drop_bounds_reserve_each_rendered_divider() {
+        let node = PaneNode::Split {
+            split_id: 1,
+            direction: SplitDirection::Horizontal,
+            ratio: 0.5,
+            first: Box::new(empty_leaf(0)),
+            second: Box::new(PaneNode::Split {
+                split_id: 2,
+                direction: SplitDirection::Vertical,
+                ratio: 0.25,
+                first: Box::new(empty_leaf(1)),
+                second: Box::new(empty_leaf(2)),
+            }),
+        };
+        let mut bounds = Vec::new();
+        PaneTree::collect_pane_bounds(
+            &node,
+            Bounds::new(point(px(10.0), px(20.0)), size(px(601.0), px(401.0))),
+            &mut bounds,
+        );
+        assert_eq!(
+            bounds[0].1,
+            Bounds::new(point(px(10.0), px(20.0)), size(px(300.0), px(401.0)))
+        );
+        assert_eq!(
+            bounds[1].1,
+            Bounds::new(point(px(311.0), px(20.0)), size(px(300.0), px(100.0)))
+        );
+        assert_eq!(
+            bounds[2].1,
+            Bounds::new(point(px(311.0), px(121.0)), size(px(300.0), px(300.0)))
+        );
     }
 
     fn leaf_id(node: &PaneNode) -> PaneId {

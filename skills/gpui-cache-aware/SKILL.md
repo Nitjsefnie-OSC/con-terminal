@@ -132,6 +132,16 @@ If a cached view causes overlap, clipping, or stale layout, the cache boundary i
   opacity. Keep such a subtree uncached while its opacity changes, and restore
   caching at the fully opaque endpoint. A changing clip can invalidate the cache,
   but rounded pixel bounds are not a reliable opacity invalidation mechanism.
+- Native-surface overlays cannot rely on an opaque GPUI fill hiding a drop
+  shadow's interior. If elevation is needed, paint only exterior content-mask
+  strips, never a shadow-only full-surface div over terminal glass. The pinned
+  Metal shadow vertex stage uses clip distances for these masks. Verify both
+  the content's unchanged appearance and the masked geometry; do not infer a
+  frame-rate improvement from a smaller painted region alone.
+- A pane's undecorated/single-pane path must still run native clip prepaint.
+  Reusing its terminal after closing a sibling can otherwise retain a split
+  mask even though its view frame has expanded. Test the real rendering path,
+  not just the native mask setter in isolation.
 
 - `.hover(|style| ...)` is a style hook on `Div`; `.on_hover(...)` is an
   enter/exit listener and requires a `Stateful<Div>`.

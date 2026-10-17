@@ -23,6 +23,14 @@ This is an unreleased prototype, not a production incident.
 - A GPUI-colored safe-area extension showed a material step against the native
   terminal despite equal RGB and opacity inputs. The underlying color/compositing
   mechanism has not been established; equal parameters are not visual proof.
+- An undecorated single terminal leaf returned before the new pane-mask
+  prepaint callback. After a split was reduced to one pane, that surviving
+  surface could keep its old half-sized mask even with a full-sized native
+  frame. This explains the reported half-window cutout, unlike earlier cache
+  hypotheses alone.
+- Drop-preview bounds divided the full container without reserving the 1pt
+  dividers rendered by flex layout. The preview also kept old rectangular
+  fills and resize feedback despite rounded pane cards.
 
 ## Changes
 
@@ -125,6 +133,34 @@ The original two tabs were retained; the disposable test tab was removed.
 Windows/Linux native layout paths and upstream dependencies are unchanged, but
 their runtime rendering was not tested. Shared hover/composer styling is part
 of this visual change; do not describe those styles as macOS-only.
+
+The next regression fix removes the macOS single-pane early return so every
+terminal leaf clears or replaces its local mask during prepaint. A linked GPUI
+test seeds an old split clip on a real Ghostty view, renders it through the
+single-pane path and checks that the full resolved bounds replace it at radius
+zero. A nested-tree geometry test checks divider reservations for both axes.
+Rounded drop regions and narrow resize feedback replace the old rectangular
+overlays. Search controls and the expanded navigation toolbar are tightened;
+small prototype shadows follow the maintainer's explicit request and leave
+native terminal opacity unchanged. Runtime acceptance and performance limits
+remain separate from these code-level checks.
+
+The first elevation preview exposed another composition mistake: a normal
+drop shadow painted by a transparent GPUI wrapper shaded the native surface's
+interior because no opaque GPUI fill followed it. The corrected primitive
+clips shadow painting to four exterior strips. A geometry test verifies that
+those strips do not intersect the content at small, composer and large canvas
+sizes. This avoids both the gray interior and full-content shadow fragments.
+
+The corrected follow-up passed 128 focused macOS tests, formatting, strict
+Clippy and the app/CLI build. In a disposable two-pane tab, the right pane was
+closed through its visible header control; the surviving terminal filled the
+canvas without retaining the half-pane mask. The disposable tab was removed
+and the original three tabs retained. The final masked-shadow preview was
+inspected after activation and no longer shaded the terminal interior. These
+are settled-state checks, not high-speed frame capture or a frame-rate
+benchmark. Portable drop-bound calculations changed to include dividers;
+Windows/Linux runtime acceptance remains unavailable.
 
 ## Lessons
 

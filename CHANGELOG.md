@@ -26,6 +26,14 @@ con is still pre-release, so entries may group related beta work while the produ
   a horizontal strip. Pane drag labels, tab details and the floating command
   bar use a more compact, consistent layout.
 
+### Fixed
+
+**macOS**
+
+- Closing the other panes no longer leaves the surviving terminal clipped to
+  its former split area. Pane drop previews follow rounded pane edges and
+  account for the space occupied by dividers.
+
 ## `v0.1.0-beta.138` - 2026-10-16
 
 ### Changed

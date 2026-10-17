@@ -1828,6 +1828,11 @@ impl GhosttyView {
         self.apply_pane_clip(window);
     }
 
+    #[cfg(all(test, target_os = "macos"))]
+    pub(crate) fn pane_clip_for_test(&self) -> Option<(Bounds<Pixels>, f32)> {
+        self.native_pane_clip
+    }
+
     #[cfg(target_os = "macos")]
     fn apply_pane_clip(&self, window: &Window) {
         let Some((bounds, radius)) = self.native_pane_clip else {

@@ -95,9 +95,16 @@ impl NavigationLayout {
         let new_y = search_y + RAIL_BUTTON_SIZE + RAIL_DIVIDER_HEIGHT + 2.0 * RAIL_ICON_GAP;
         let controls = [
             (8.0, 0.0),
-            (42.0, files_y),
-            (76.0, search_y),
-            (panel_width - RAIL_BUTTON_SIZE - 8.0, new_y),
+            (40.0, files_y),
+            (72.0, search_y),
+            (
+                if cfg!(target_os = "macos") {
+                    104.0
+                } else {
+                    panel_width - RAIL_BUTTON_SIZE - 8.0
+                },
+                new_y,
+            ),
         ]
         .map(|(expanded_x, compact_y)| (mix(8.0, expanded_x), leading + mix(compact_y, 0.0)));
         Self {
@@ -105,7 +112,14 @@ impl NavigationLayout {
             row_height: mix(RAIL_ICON_SIZE, row_height),
             row_inset: mix(2.0, 8.0),
             selection_inset: mix(4.0, ROW_SELECTION_INSET),
-            selection_radius: mix(10.0, (row_height - 2.0 * ROW_SELECTION_INSET) * 0.5),
+            selection_radius: mix(
+                10.0,
+                if cfg!(target_os = "macos") {
+                    7.0
+                } else {
+                    (row_height - 2.0 * ROW_SELECTION_INSET) * 0.5
+                },
+            ),
             icon_size: mix(18.0, icon_size),
             icon_center_x: mix(RAIL_ICON_SIZE * 0.5, row_height * 0.5),
             list_top: leading

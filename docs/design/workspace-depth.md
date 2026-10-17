@@ -5,7 +5,14 @@
 On macOS, workspaces with sidebars or multiple tabs use an inset terminal
 canvas. It has 2pt of breathing room and 8pt outer corners. Split panes use 2pt
 insets and 7pt corners within that canvas. The original divider hit targets
-remain available between them; no outlines or shadows compete with content.
+remain available between them; no outlines compete with content. At the
+maintainer's request, this local prototype tests small offset shadows on the
+canvas, split panes and composer (3pt blur, -1pt spread). These are passive GPUI
+decorations, not native backing fills; clean mode removes canvas elevation.
+Shadow paint is clipped to four narrow exterior strips. Never put an ordinary
+shadow-only transparent div above native content: its interior shadow relies
+on an opaque GPUI background that Con deliberately does not paint.
+This does not change the application's general shadowless control design.
 Pane titles align to the leading edge and surface tabs use the UI font, without
 a nested track or redundant surface count. Their close and rename actions stay
 in the same pane-local scope.
@@ -27,7 +34,8 @@ selections remain visible. Only this reserved area receives a terminal-colored n
 material; never paint a second fill over native terminal content. The composer uses
 Window Chrome, while the surrounding safe area uses Terminal Glass opacity.
 Light chrome uses a gentle white lift; dark chrome uses a foreground lift.
-Neither needs a shadow or outline. Sidebar boundaries use the canvas gutter,
+The composer's shadow is a separate passive overlay outside its reveal clip,
+so the clip cannot cut the lower shadow into a hard edge. Sidebar boundaries use the canvas gutter,
 not an additional decorative vertical line.
 
 Show/hide reveals the fixed composer through a bottom-anchored clip. The
@@ -75,6 +83,14 @@ native layout pending before the next frame; a reused terminal is not a newly
 created surface. The floating drag label uses the same 8pt rounding and UI
 typography as the canvas, with a quiet terminal icon and an opaque fill so it
 stays legible above native content.
+Drop regions follow the same 2pt inset and 7pt corners as pane cards. Their
+bounds deduct every 1pt split divider. Resizing retains its 5pt hit target but
+shows only a 1pt, inset feedback line on macOS, not a full-height opaque bar.
+
+Every macOS terminal leaf, including an undecorated single pane, updates its
+native pane clip during prepaint. Do not bypass this with a single-pane early
+return: closing a sibling or promoting a pane reuses a surface that may still
+have its old split-sized mask.
 
 ## Ownership and presentation
 

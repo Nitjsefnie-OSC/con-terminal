@@ -417,23 +417,30 @@ impl Render for SidebarSearchView {
             .child(
                 div()
                     .px(px(8.0))
-                    .pt(px(10.0))
+                    .pt(px(8.0))
                     .pb(px(8.0))
                     .flex()
                     .flex_col()
                     .child(
                         div()
-                            .h(ui_space_px(theme, 38.0))
+                            .h(ui_space_px(
+                                theme,
+                                if cfg!(target_os = "macos") {
+                                    32.0
+                                } else {
+                                    38.0
+                                },
+                            ))
                             .flex()
                             .items_center()
-                            .gap(px(8.0))
-                            .pl(px(10.0))
+                            .gap(px(6.0))
+                            .pl(px(8.0))
                             .pr(px(5.0))
                             .rounded(px(8.0))
                             .bg(theme.foreground.opacity(if theme.is_dark() {
-                                0.07
+                                0.055
                             } else {
-                                0.045
+                                0.035
                             }))
                             .child(
                                 svg()
@@ -445,6 +452,7 @@ impl Render for SidebarSearchView {
                             .child(
                                 div().flex_1().min_w_0().child(
                                     Input::new(&self.query)
+                                        .small()
                                         .appearance(false)
                                         .font_family(theme.font_family.clone())
                                         .text_size(ui_px(theme, 13.0))
@@ -608,12 +616,19 @@ where
         .toggled(active)
         .rounded(px(6.0))
         .with_size(ui_space_px(theme, 26.0))
-        .w(ui_space_px(theme, 34.0))
+        .w(ui_space_px(
+            theme,
+            if cfg!(target_os = "macos") {
+                26.0
+            } else {
+                34.0
+            },
+        ))
         .h(ui_space_px(theme, 26.0))
         .p_0()
         .flex_shrink_0()
         .text_size(ui_px(theme, 11.5))
-        .font_family(theme.mono_font_family.clone())
+        .font_family(theme.font_family.clone())
         .text_color(if active {
             theme.primary
         } else {

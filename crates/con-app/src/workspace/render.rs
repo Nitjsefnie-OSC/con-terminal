@@ -762,28 +762,36 @@ impl Render for ConWorkspace {
                     split_preview_local_rect(regions.incoming, content_bounds);
                 let (seam_left, seam_top, seam_width, seam_height) =
                     split_preview_local_rect(regions.seam, content_bounds);
+                let preview_inset = if cfg!(target_os = "macos") { 2.0 } else { 0.0 };
+                let preview_radius = if cfg!(target_os = "macos") { 7.0 } else { 0.0 };
                 pane_content = pane_content
                     .child(
                         div()
                             .absolute()
-                            .left(px(existing_left))
-                            .top(px(existing_top))
-                            .w(px(existing_width.max(0.0)))
-                            .h(px(existing_height.max(0.0)))
+                            .left(px(existing_left + preview_inset))
+                            .top(px(existing_top + preview_inset))
+                            .w(px((existing_width - 2.0 * preview_inset).max(0.0)))
+                            .h(px((existing_height - 2.0 * preview_inset).max(0.0)))
+                            .rounded(px(preview_radius))
                             .bg(theme.background.opacity(0.18)),
                     )
                     .child(
                         div()
                             .absolute()
-                            .left(px(incoming_left))
-                            .top(px(incoming_top))
-                            .w(px(incoming_width.max(0.0)))
-                            .h(px(incoming_height.max(0.0)))
+                            .left(px(incoming_left + preview_inset))
+                            .top(px(incoming_top + preview_inset))
+                            .w(px((incoming_width - 2.0 * preview_inset).max(0.0)))
+                            .h(px((incoming_height - 2.0 * preview_inset).max(0.0)))
+                            .rounded(px(preview_radius))
                             .flex()
                             .items_center()
                             .justify_center()
                             .px(px(12.0))
-                            .bg(theme.primary.opacity(0.22))
+                            .bg(theme.primary.opacity(if cfg!(target_os = "macos") {
+                                0.12
+                            } else {
+                                0.22
+                            }))
                             .font_family(theme.font_family.clone())
                             .text_size(px(12.0))
                             .text_color(theme.foreground.opacity(0.78))
@@ -796,7 +804,11 @@ impl Render for ConWorkspace {
                             .top(px(seam_top))
                             .w(px(seam_width.max(0.0)))
                             .h(px(seam_height.max(0.0)))
-                            .bg(theme.primary.opacity(0.62)),
+                            .bg(theme.primary.opacity(if cfg!(target_os = "macos") {
+                                0.0
+                            } else {
+                                0.62
+                            })),
                     );
             }
         }
@@ -911,6 +923,21 @@ impl Render for ConWorkspace {
                             .flex_shrink_0(),
                     )
                     .child(
+                        frame::surface_elevation(
+                            14.0 * canvas_depth,
+                            if theme.is_dark() { 0.18 } else { 0.09 },
+                        )
+                        .bottom(px(frame::INPUT_ISLAND_INSET * canvas_depth))
+                        .left(px(((width
+                            - 2.0 * frame::CANVAS_INSET * canvas_depth
+                            - island_width)
+                            * 0.5)
+                            .max(0.0)))
+                        .w(px(island_width))
+                        .h(px(full_input_bar_height))
+                        .opacity(input_bar_progress * canvas_depth),
+                    )
+                    .child(
                         frame::input_reveal_clip(
                             full_input_bar_height,
                             input_bar_progress,
@@ -959,6 +986,16 @@ impl Render for ConWorkspace {
                 terminal_surface_color.opacity(self.terminal_opacity),
             ))
             .child(terminal_area);
+
+        #[cfg(target_os = "macos")]
+        let terminal_area = terminal_area.child(
+            frame::surface_elevation(
+                frame::CANVAS_RADIUS * canvas_depth,
+                if theme.is_dark() { 0.12 } else { 0.05 },
+            )
+            .inset(px(frame::CANVAS_INSET * canvas_depth))
+            .opacity(canvas_depth),
+        );
 
         let mut main_area = div().relative().flex().flex_1().min_h_0();
 

@@ -7,6 +7,55 @@ pub(super) const CANVAS_RADIUS: f32 = 8.0;
 pub(super) const INPUT_ISLAND_INSET: f32 = 10.0;
 const INPUT_ISLAND_MAX_WIDTH: f32 = 800.0;
 
+/// Prototype elevation is confined to the existing gutters. It never supplies
+/// a terminal backing or changes the native surface's opacity.
+pub(crate) fn surface_elevation(radius: f32, opacity: f32) -> gpui::Div {
+    use gpui::ParentElement;
+    gpui::div().absolute().child(
+        gpui::canvas(
+            |bounds, _, _| bounds,
+            move |_, bounds, window, _| {
+                let shadow = gpui::BoxShadow::new(px(0.0), px(1.0), gpui::black().opacity(opacity))
+                    .blur_radius(px(3.0))
+                    .spread_radius(px(-1.0));
+                // Drop shadows normally rely on a later opaque fill to hide their
+                // interior. Native glass has no such GPUI fill. Draw only exterior
+                // strips, keeping content and fragment cost out of the shadow.
+                for strip in elevation_strips(bounds, px(5.0)) {
+                    window.with_content_mask(Some(gpui::ContentMask { bounds: strip }), |window| {
+                        window.paint_drop_shadows(
+                            bounds,
+                            gpui::Corners::all(px(radius)),
+                            std::slice::from_ref(&shadow),
+                        );
+                    });
+                }
+            },
+        )
+        .absolute()
+        .size_full(),
+    )
+}
+
+fn elevation_strips(bounds: Bounds<Pixels>, width: Pixels) -> [Bounds<Pixels>; 4] {
+    let outer = bounds.dilate(width);
+    [
+        Bounds::new(outer.origin, gpui::size(outer.size.width, width)),
+        Bounds::new(
+            point(outer.left(), bounds.bottom()),
+            gpui::size(outer.size.width, width),
+        ),
+        Bounds::new(
+            point(outer.left(), bounds.top()),
+            gpui::size(width, bounds.size.height),
+        ),
+        Bounds::new(
+            point(bounds.right(), bounds.top()),
+            gpui::size(width, bounds.size.height),
+        ),
+    ]
+}
+
 /// The island and its popovers share one horizontal geometry, including on
 /// wide windows where the composer stops growing but the terminal does not.
 pub(super) fn input_island_geometry(width: f32, depth: f32) -> (f32, f32) {
@@ -384,6 +433,21 @@ pub(crate) fn pane_header_background(color: Hsla, radius: f32) -> impl IntoEleme
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn elevation_never_shades_native_surface_content() {
+        for (width, height) in [(20.0, 16.0), (800.0, 44.0), (2400.0, 1600.0)] {
+            let bounds = Bounds::new(point(px(12.0), px(28.0)), gpui::size(px(width), px(height)));
+            let strips = elevation_strips(bounds, px(5.0));
+            let mut area = 0.0;
+            for strip in strips {
+                let overlap = strip.intersect(&bounds);
+                assert!(overlap.size.width <= px(0.0) || overlap.size.height <= px(0.0));
+                area += strip.size.width.as_f32() * strip.size.height.as_f32();
+            }
+            assert_eq!(area, (width + 10.0) * (height + 10.0) - width * height);
+        }
+    }
 
     #[test]
     fn floating_input_stays_centered_and_popovers_follow_its_frame() {
