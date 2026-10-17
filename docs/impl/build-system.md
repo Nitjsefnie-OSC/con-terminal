@@ -1,5 +1,21 @@
 # Implementation: Build System
 
+## Flatpak Icon
+
+Flatpak uses a 256px derivative of the canonical Tail A6 artwork. Passing the
+full-size artwork directly creates a nonstandard hicolor directory that
+AppStream does not discover. After changing the artwork, regenerate the asset:
+
+```sh
+sips -z 256 256 assets/app-icons/con-raccoon-tail-A6.png --out packaging/flatpak/con-raccoon-tail-A6.png
+shasum -a 256 assets/app-icons/con-raccoon-tail-A6.png
+```
+
+Update the `source-sha256` comment in `packaging/flatpak/aetherpak.yaml`, then run
+`python3 scripts/release/test-flatpak-icon.py`. Native Flatpak builds still run
+AppStream composition and the bundle smoke test; the local size check does not
+replace those checks.
+
 ## macOS Release Handoff
 
 Dependency setup reuses the runner's installed CMake and logs its version.

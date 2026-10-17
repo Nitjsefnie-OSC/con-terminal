@@ -77,4 +77,7 @@ apps:
           dest: /app/bin/con-cli
       desktop: packaging/flatpak/co.nowledge.con.desktop
       metainfo: packaging/flatpak/co.nowledge.con.metainfo.xml
-      icons: assets/app-icons/con-raccoon-tail-A6.png
+      # Derived from assets/app-icons/con-raccoon-tail-A6.png at a standard
+      # hicolor size; AppStream does not discover the 2060px source directory.
+      # source-sha256: 342a287ff7ff44c26b436d164be892345df1497d426a74a2dfe29f5e08a7a574
+      icons: packaging/flatpak/con-raccoon-tail-A6.png

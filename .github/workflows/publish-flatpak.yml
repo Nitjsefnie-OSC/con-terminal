@@ -80,6 +80,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate Flatpak Icon
+        run: python3 scripts/release/test-flatpak-icon.py
+
       - name: Determine release metadata
         id: meta
         shell: bash
