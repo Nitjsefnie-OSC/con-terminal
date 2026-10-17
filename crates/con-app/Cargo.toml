@@ -43,6 +43,7 @@ gpui-kit-assets.workspace = true
 reqwest_client.workspace = true
 anyhow.workspace = true
 log.workspace = true
+ttf-parser = "0.25"
 env_logger.workspace = true
 tracing = { version = "0.1", features = ["log"] }
 crossbeam-channel.workspace = true
@@ -98,7 +99,6 @@ ashpd = { version = "0.13", default-features = false, features = ["async-io", "n
 # `RenderImage`s, whose constructor exposes these concrete crate types.
 smallvec = "1"
 fontdb = "0.23"
-ttf-parser = "0.25"
 
 [target.'cfg(unix)'.dependencies]
 socket2 = "0.6"
@@ -111,8 +111,6 @@ image = { version = "0.25", default-features = false, features = ["png", "ico"] 
 gpui = { workspace = true, features = ["test-support"] }
 # Inspect the theme projection consumed by the component library's primitives.
 gpui-base = "=0.7.0"
-# Verify the bundled status font has outlines, not only character mappings.
-ttf-parser = "0.25"
 
 [build-dependencies]
 cc = "1"

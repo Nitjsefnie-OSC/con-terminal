@@ -109,6 +109,41 @@ pub(crate) fn color(icon: &str) -> gpui::Hsla {
     .into()
 }
 
+/// Match the optical inset of the bitmap identities, not the font's advance
+/// cell. Parse the bundled face once; this does not inspect installed fonts.
+pub(crate) fn glyph_geometry(
+    glyph: char,
+    slot: gpui::Pixels,
+) -> Option<(gpui::Pixels, gpui::Bounds<gpui::Pixels>)> {
+    static FACE: std::sync::OnceLock<ttf_parser::Face<'static>> = std::sync::OnceLock::new();
+    let face = FACE.get_or_init(|| {
+        ttf_parser::Face::parse(
+            include_bytes!("../../../assets/fonts/IoskeleyMono-Regular.ttf"),
+            0,
+        )
+        .expect("bundled icon font")
+    });
+    let bounds = face.glyph_bounding_box(face.glyph_index(glyph)?)?;
+    let extent = f32::from(bounds.width().max(bounds.height()));
+    if extent <= 0.0 {
+        return None;
+    }
+    let scale = slot.as_f32() * 0.80 / extent;
+    Some((
+        gpui::px(f32::from(face.units_per_em()) * scale),
+        gpui::Bounds::new(
+            gpui::point(
+                gpui::px(f32::from(bounds.x_min) * scale),
+                gpui::px(f32::from(bounds.y_min) * scale),
+            ),
+            gpui::size(
+                gpui::px(f32::from(bounds.width()) * scale),
+                gpui::px(f32::from(bounds.height()) * scale),
+            ),
+        ),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -181,6 +216,10 @@ mod tests {
             "javascript",
         ] {
             let glyph = glyph(&format!("program:{name}")).unwrap();
+            for size in [12.0, 18.0, 24.0] {
+                let (_, ink) = glyph_geometry(glyph, gpui::px(size)).unwrap();
+                assert!((ink.size.width.max(ink.size.height).as_f32() - size * 0.8).abs() < 0.001);
+            }
             let bounds = font
                 .glyph_bounding_box(font.glyph_index(glyph).unwrap())
                 .unwrap();
