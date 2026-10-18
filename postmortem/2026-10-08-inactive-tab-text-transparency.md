@@ -66,7 +66,11 @@ The renderer correction changes only two destination-alpha factors to
 `OneMinusSourceAlpha`. It adds no draw calls or per-frame work. The existing
 path-rasterization blend state is already correct and stays unchanged. The
 upstream contribution is [Zed #65295](https://github.com/zed-industries/zed/pull/65295).
-It is not yet integrated into Con's published dependencies.
+That proposal was closed without merge. The equivalent Metal correction later
+landed in [Zed #65571](https://github.com/zed-industries/zed/pull/65571) on October
+14, together with Windows and wgpu changes. It is not yet integrated into Con's
+published dependencies. This was checked against official source on October 18;
+do not reopen a duplicate fix.
 
 ## Verification
 
@@ -82,11 +86,10 @@ It is not yet integrated into Con's published dependencies.
 
 ## Remaining Work
 
-- Obtain upstream review and a compatible published GPUI/component snapshot;
-  preserve one GPUI package identity rather than introducing a local fork.
-- The upstream PR is open and no longer draft as of October 8; it has not been
-  merged into a compatible published dependency. Check its current review and
-  contributor requirements before integration.
+- Obtain a compatible published GPUI/component snapshot containing #65571;
+  preserve one GPUI package identity. The latest `gpui-pre-apple` 0.3.9 archive
+  checked on October 18 still uses destination-alpha `One` in both affected
+  pipelines. An official source merge is not package availability.
 - Upgrade the exactly pinned GPUI family and paired components together.
 - Validate Con's dark/light transparent and opaque chrome, text, SVGs, paths,
   menus and search results in a build that actually consumes the fix.

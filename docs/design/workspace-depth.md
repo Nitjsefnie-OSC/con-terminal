@@ -156,18 +156,17 @@ have its old split-sized mask.
   the path's bounds even if it has a hole. The caption row owns its own material,
   so docking controls does not double-composite the sidebar background.
 - AppKit clips terminal host layers against the shared rectangular viewport
-  and each leaf's rounded card.
-  Rounding a GPUI wrapper alone does not clip its native sibling views.
-  A view-backed NSScrollView must first receive its own backing layer when a
-  rounded mask is requested. A Metal-backed terminal descendant does not
+  and each leaf's rectangular card bounds. GPUI owns decorative rounding for
+  both header and native content; do not antialias the same curve again in
+  the native mask or header fill. A view-backed NSScrollView must first
+  receive its own backing layer when a clip is required. A Metal-backed
+  terminal descendant does not
   guarantee that the scroll host has a layer. Leave the window parent alone.
-- Corner cutouts overlap the native mask by one physical pixel at the diagonal,
-  tapering to exact, tangent-continuous endpoints at the straight edges.
-  Do not translate an inset arc and connect it with short perpendicular lines:
-  those lines create visible steps where the corner meets the edge.
-  Exact complementary antialiased shapes do not produce full coverage under
-  source-over compositing. This small overlap is not an outline or an opaque
-  terminal backing; the rest of the terminal stays untouched. Leave AppKit's
+- Corner cutouts use one circular curve with tangent-continuous endpoints.
+  Do not expand it to compensate for duplicate masks: competing coverage
+  boundaries make contour thickness uneven. The header is opaque and
+  rectangular behind the cutout; native content is not rounded a second time.
+  Keep the rest of the terminal untouched. Leave AppKit's
   container's backing-store composition alone: Con owns host masks, not the
   parent's backing layer.
 - The native safe-area view is disabled for the input tray. Its former fill
@@ -178,14 +177,14 @@ have its old split-sized mask.
   terminal translucency behind the tray.
 - The clip path is cached per host. A window-scoped geometry generation
   invalidates otherwise unchanged terminal layouts when the outer canvas moves.
-- Pane headers round only the corners that touch the canvas's top corners.
-  Interior pane headers keep square joins.
+- Pane headers supply a rectangular fill; pane cutouts own their visible corners.
 - Existing frame-scoped native presentation synchronization remains in place.
   A shape mask must not introduce an opaque terminal backing, a second glass
   fill or a delayed geometry update.
-- Each macOS terminal host intersects its pane-local rounded mask with the
-  workspace mask. Cache both paths and clear the local mask when the pane
-  returns to an unsplit layout. Never attach pane-local clipping to the shared
+- Each macOS terminal host intersects its pane-local rectangle with the
+  workspace mask. Cache both paths and remove unnecessary masks once the host
+  is fully contained in rectangular pane and workspace bounds. A zero-radius
+  smaller pane still needs clipping. Never attach pane-local clipping to the shared
   window transition underlay. Keep this path macOS-only until other backends
   have equivalent native acceptance; GPUI rounding alone does not clip AppKit.
 - GPUI owns host and surface view frames; disable their AppKit autoresizing

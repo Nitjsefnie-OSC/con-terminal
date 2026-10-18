@@ -1,11 +1,12 @@
 # Native Terminal Presentation
 
-Status: reporter accepted the isolated macOS experiment on 2026-10-10.
-The upstream proposal is published; Con's temporary dependency integration is
-implemented and locally verified in PR #460, pending native CI and merge.
-The maintainer reviewed the upstream candidate and
-authorized a temporary public fork on 2026-10-10. Source publication, PR merge,
-and release remain separate delivery states.
+Status: Con consumes the temporary compatible snapshot recorded below. The
+reporter accepted the isolated macOS experiment on 2026-10-10; the upstream
+frame-scoped API proposal remains open in Discussion #65433. The maintainer
+authorized this public fork on 2026-10-10. An independently merged upstream
+alpha correction does not replace its presentation API; see the replacement
+audit below. Source publication, package availability, and Con delivery remain
+separate states.
 
 ## Isolated Experiment
 
@@ -136,12 +137,16 @@ remain independently testable.
   renderer; avoid an always-on synchronization performance tax.
 - Require native Windows/Linux CI and keep their renderer changes separate.
 
-The reporter scenario passed in the isolated preview. The production issue
-remains open until the same mechanism is integrated through compatible
-dependencies and validated in Con. Correct scene geometry alone is not proof
-of atomic native/GPU presentation.
+The reporter scenario passed in the isolated preview. Con's compatible
+dependency integration is recorded below; it does not establish acceptance for
+every display or power state. Correct scene geometry alone is not proof of
+atomic native/GPU presentation.
 
 ## Upstream Handoff
+
+The [separate upstream preparation checklist](native-terminal-presentation-upstream.md)
+distinguishes a matched Con embedding reproduction from Zed editor regression
+testing, and records the human-review and artifact gates for a future PR.
 
 The proposal is published as [Zed Discussion #65433](https://github.com/zed-industries/zed/discussions/65433),
 with the reporter's original transition screenshot, before/after behavior,
@@ -239,6 +244,45 @@ inspected; this smoke check is not a high-speed recording, proof of 120 FPS, or
 acceptance for unavailable Windows/Linux hardware. The earlier reporter's
 Con Sync Preview and production sessions were not replaced or stopped.
 
+## Official Replacement Audit (2026-10-18)
+
+Two independent rendering problems must not be confused:
+
+| Capability | Official status checked on October 18 | Con requirement |
+| --- | --- | --- |
+| Source-over alpha compositing | [Zed #65571](https://github.com/zed-industries/zed/pull/65571), merged October 14 at `e18de65b75901f8720ff9c9320bb013395de54e5` | Correct translucent-layer blending; not a native geometry/presentation fence |
+| Application-requested frame-scoped native presentation | [Zed Discussion #65433](https://github.com/zed-industries/zed/discussions/65433), open | Keep native terminal geometry and the matching GPUI scene in one presentation boundary |
+
+Official Zed main at `56934ec0560bce8929025497411de7f5322fb6ca` contains the
+alpha correction but not the application-facing frame-scoped request API.
+Its internal AppKit uses of `set_presents_with_transaction` are not equivalent
+to an embedding application's request during geometry changes.
+
+The latest published `gpui-pre-apple` was 0.3.9. Its downloaded archive matched
+the registry checksum
+`b52f58893fe1a0836464428dfad2b5eaf42c9c303a9638f4c2aced5a69072a15`;
+both affected Metal destination-alpha factors still used `One`, not the
+corrected `OneMinusSourceAlpha`. Official source, published packages, and Con's
+resolved dependency are therefore three distinct checkpoints.
+
+Our earlier [alpha PR #65295](https://github.com/zed-industries/zed/pull/65295)
+is closed without merge. The equivalent independently merged fix makes a
+duplicate PR unnecessary. It does **not** make the existing presentation fork
+unnecessary, nor authorize adding alpha changes to that fork. No dependency or
+fork change was needed for the accepted Con-only pane-corner preview.
+
+For a future replacement, inspect the current official source and the actual
+published archive, not just our old PR's status. Search for
+`request_native_surface_presentation_sync` (or its upstream equivalent), the
+request-consumption/failure tests, and Metal destination-alpha blend factors.
+Then inspect Con's resolved Cargo graph for a single compatible GPUI identity.
+
+Related investigations:
+
+- [Pane-corner ownership and accepted preview](../../postmortem/2026-10-18-pane-corner-compositing-investigation.md).
+- [Translucent text and source-over alpha](../../postmortem/2026-10-08-inactive-tab-text-transparency.md).
+- [Workspace geometry and decorative clipping](workspace-depth.md).
+
 ## Temporary Fork Exit Criteria
 
 Before production integration, record the public repository, full immutable
@@ -252,7 +296,12 @@ binary. The final snapshot's full Con suite passed with the isolated short
 temporary directory above. Windows/Linux native CI remains required; macOS
 tests cannot establish their runtime behavior.
 
-Once official compatible packages contain the accepted fix, remove the fork
+Once official compatible packages contain the frame-scoped presentation API
+and its failure/nesting semantics, remove the fork
 override, upgrade GPUI and paired components together where necessary (including
 assets and `gpui-base`), and repeat interaction and performance checks. Keep
 upstream acceptance, package availability, and Con delivery as separate states.
+Include the official alpha correction when selecting that compatible graph;
+an alpha-only upgrade is not a replacement for the presentation API. Verify
+rapid chrome reversals, nested panes, tab handoffs, and display/power changes
+without restoring a permanent synchronous rendering cost.
