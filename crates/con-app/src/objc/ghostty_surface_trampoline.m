@@ -119,15 +119,16 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     ConTerminalCanvasClip *clip = objc_getAssociatedObject(host.superview, &kConTerminalCanvasKey);
     if (clip == nil) return;
     ConTerminalCanvasClip *pane = objc_getAssociatedObject(host, &kConTerminalPaneClipKey);
-    // NSScrollView can remain view-backed even when its terminal descendant
-    // has a Metal layer. A layer mask is otherwise silently skipped entirely.
-    if (host.layer == nil && (clip.radius > 0 || pane.radius > 0)) {
-        host.wantsLayer = YES;
-    }
-    if (host.layer == nil) return;
     NSRect rect = [host convertRect:clip.rect fromView:host.superview];
     CGFloat paneRadius = pane.radius;
-    NSRect paneRect = paneRadius > 0 ? [host convertRect:pane.rect fromView:host.superview] : NSZeroRect;
+    NSRect paneRect = pane != nil ? [host convertRect:pane.rect fromView:host.superview] : NSZeroRect;
+    BOOL paneContainsHost = pane == nil || (paneRadius <= 0 && NSContainsRect(paneRect, host.bounds));
+    BOOL clean = clip.radius <= 0 && NSContainsRect(rect, host.bounds) && paneContainsHost;
+    BOOL paneMaskNeeded = !paneContainsHost;
+    // A rectangular pane clip must still constrain reused/resizing hosts.
+    // A Metal-backed descendant does not give NSScrollView a backing layer.
+    if (host.layer == nil && !clean) host.wantsLayer = YES;
+    if (host.layer == nil) return;
     CGFloat scale = host.window != nil ? host.window.backingScaleFactor : host.layer.contentsScale;
     if (!isfinite(scale) || scale <= 0.0) scale = 1.0;
     ConTerminalCanvasMask *mask = objc_getAssociatedObject(host, &kConTerminalCanvasMaskKey);
@@ -141,9 +142,8 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     } else if (NSEqualRects(mask.rect, rect) && NSEqualRects(mask.bounds, host.bounds) &&
                mask.radius == clip.radius && mask.scale == scale &&
                mask.paneRadius == paneRadius && NSEqualRects(mask.paneRect, paneRect)) {
-        BOOL clean = clip.radius <= 0.0 && paneRadius <= 0.0 && NSContainsRect(rect, host.bounds);
         if (clean ? host.layer.mask != nil : (host.layer.mask != mask.layer ||
-                mask.targetLayer != host.layer || mask.layer.mask != (paneRadius > 0 ? mask.paneLayer : nil))) {
+                mask.targetLayer != host.layer || mask.layer.mask != (paneMaskNeeded ? mask.paneLayer : nil))) {
             // AppKit may replace a backing layer without changing view bounds.
             // Rebind the cached paths instead of treating geometry as authority.
             [CATransaction begin];
@@ -152,7 +152,7 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
                 mask.targetLayer.mask = nil;
             }
             mask.targetLayer = host.layer;
-            mask.layer.mask = paneRadius > 0 ? mask.paneLayer : nil;
+            mask.layer.mask = paneMaskNeeded ? mask.paneLayer : nil;
             host.layer.mask = clean ? nil : mask.layer;
             [CATransaction commit];
         }
@@ -164,7 +164,7 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     mask.scale = scale;
     mask.paneRadius = paneRadius;
     mask.paneRect = paneRect;
-    if (clip.radius <= 0.0 && paneRadius <= 0.0 && NSContainsRect(rect, host.bounds)) {
+    if (clean) {
         // Clean mode needs no extra offscreen mask for an already-contained host.
         [CATransaction begin];
         [CATransaction setDisableActions:YES];
@@ -182,7 +182,7 @@ void con_terminal_canvas_apply_clip(void *host_ptr) {
     mask.layer.frame = host.bounds;
     mask.layer.contentsScale = scale;
     mask.layer.path = path;
-    if (paneRadius > 0) {
+    if (paneMaskNeeded) {
         CGPathRef panePath = CGPathCreateWithRoundedRect(NSRectToCGRect(paneRect), paneRadius, paneRadius, NULL);
         mask.paneLayer.frame = host.bounds;
         mask.paneLayer.contentsScale = scale;
@@ -203,12 +203,14 @@ bool con_terminal_canvas_clip_is_attached(void *host_ptr) {
     ConTerminalCanvasClip *pane = objc_getAssociatedObject(host, &kConTerminalPaneClipKey);
     if (clip == nil || host.layer == nil) return false;
     NSRect rect = [host convertRect:clip.rect fromView:host.superview];
-    if (clip.radius <= 0.0 && pane.radius <= 0.0 && NSContainsRect(rect, host.bounds)) {
+    NSRect paneRect = pane != nil ? [host convertRect:pane.rect fromView:host.superview] : NSZeroRect;
+    BOOL paneContainsHost = pane == nil || (pane.radius <= 0 && NSContainsRect(paneRect, host.bounds));
+    if (clip.radius <= 0.0 && NSContainsRect(rect, host.bounds) && paneContainsHost) {
         return host.layer.mask == nil;
     }
     ConTerminalCanvasMask *mask = objc_getAssociatedObject(host, &kConTerminalCanvasMaskKey);
     return mask != nil && mask.targetLayer == host.layer && host.layer.mask == mask.layer &&
-        mask.layer.mask == (pane.radius > 0 ? mask.paneLayer : nil);
+        mask.layer.mask == (!paneContainsHost ? mask.paneLayer : nil);
 }
 
 bool con_terminal_canvas_set_safe_area(void *gpui_ptr, double height,

@@ -95,7 +95,7 @@ pub(crate) fn surface_edge(radius: f32, color: Hsla, raised: bool) -> gpui::Div 
                 // would still shade its interior on every frame.
                 for strip in outline_strips(bounds, px(radius), width) {
                     window.with_content_mask(Some(gpui::ContentMask { bounds: strip }), |window| {
-                        let mut edge = gpui::fill(bounds, gpui::transparent_black());
+                        let mut edge = gpui::fill(bounds, color.opacity(0.0));
                         edge.corner_radii = gpui::Corners::all(px(radius));
                         edge.border_widths = gpui::Edges::all(width);
                         edge.border_color = color;
@@ -243,7 +243,7 @@ impl PaneSurround {
                         bounds,
                         depth,
                         scale,
-                        corners: corner_cutouts(bounds.inset(inset), PANE_RADIUS * depth, scale),
+                        corners: corner_cutouts(bounds.inset(inset), PANE_RADIUS * depth),
                     });
                 }
                 (
@@ -327,20 +327,14 @@ impl CanvasSurround {
     }
 }
 
-fn corner_cutouts(bounds: Bounds<Pixels>, radius: f32, scale: f32) -> Vec<gpui::Path<Pixels>> {
+fn corner_cutouts(bounds: Bounds<Pixels>, radius: f32) -> Vec<gpui::Path<Pixels>> {
     let r = px(radius)
         .min(bounds.size.width * 0.5)
         .min(bounds.size.height * 0.5);
     if r <= px(0.0) {
         return Vec::new();
     }
-    // Independent AA masks are not complementary under source-over. Keep
-    // one physical pixel of overlap at the diagonal, but preserve the exact
-    // edge endpoints and their tangents: an inset arc adds a step at each end.
-    let band = px(1.0 / scale.max(1.0)).min(r);
-    // At t=0.5 each control contributes 3/8 to each coordinate. Moving
-    // both controls by 4*sqrt(2)/3 gives one pixel of diagonal overlap.
-    let c = (r * 0.552_284_8 - band * 1.885_618_1).max(px(0.0));
+    let c = r * 0.552_284_8;
     let mut corners = Vec::with_capacity(4);
     for (origin, x_sign, y_sign) in [
         (bounds.origin, 1.0, 1.0),
@@ -529,14 +523,12 @@ pub(crate) fn header_background(color: Hsla) -> impl IntoElement {
     .left_0()
 }
 
-pub(crate) fn pane_header_background(color: Hsla, radius: f32) -> impl IntoElement {
+pub(crate) fn pane_header_background(color: Hsla) -> impl IntoElement {
     gpui::canvas(
         |_, _, _| {},
         move |bounds, (), window, _| {
-            let mut quad = gpui::fill(bounds, color);
-            quad.corner_radii.top_left = px(radius);
-            quad.corner_radii.top_right = px(radius);
-            window.paint_quad(quad);
+            // The pane's exterior cutout owns rounding for header and terminal.
+            window.paint_quad(gpui::fill(bounds, color));
         },
     )
     .absolute()
@@ -927,10 +919,10 @@ mod tests {
     }
 
     #[test]
-    fn corner_paths_are_small_and_cover_the_native_antialiasing_band() {
+    fn corner_paths_stay_small_and_leave_the_card_interior_unpainted() {
         let bounds = Bounds::new(point(px(0.0), px(0.0)), gpui::size(px(600.0), px(400.0)));
         for scale in [1.0, 2.0] {
-            let paths = corner_cutouts(bounds, PANE_RADIUS, scale);
+            let paths = corner_cutouts(bounds, PANE_RADIUS);
             assert_eq!(paths.len(), 4);
             for path in &paths {
                 assert!(path.bounds.size.width <= px(PANE_RADIUS));
@@ -953,15 +945,14 @@ mod tests {
                 })
             };
             assert!(contains(0.1, 0.1));
-            assert!(contains(2.64, 2.64), "missing AA overlap at {scale}x");
             let near = 0.25 / scale;
             assert!(
                 !contains(PANE_RADIUS - near, near) && !contains(near, PANE_RADIUS - near),
-                "AA overlap must taper to the straight edges at {scale}x"
+                "corner cutout must meet the straight edges at {scale}x"
             );
             assert!(!contains(8.0, 8.0), "corner painted terminal interior");
         }
-        assert!(corner_cutouts(bounds, 0.0, 2.0).is_empty());
+        assert!(corner_cutouts(bounds, 0.0).is_empty());
     }
 
     #[gpui::test]
@@ -1213,6 +1204,38 @@ mod tests {
                 NSPoint::new(15.0, 200.0),
                 false
             ));
+            assert!(con_terminal_canvas_set_clip(
+                parent_ptr, 0.0, 0.0, 600.0, 400.0, 0.0
+            ));
+            assert!(con_terminal_pane_set_clip(
+                host.cast(),
+                10.0,
+                10.0,
+                280.0,
+                380.0,
+                0.0
+            ));
+            con_terminal_canvas_apply_clip(host.cast());
+            let rectangular_mask: *mut objc::runtime::Object = msg_send![layer, mask];
+            assert!(
+                !rectangular_mask.is_null(),
+                "zero radius lost pane clipping"
+            );
+            let inner_mask: *mut objc::runtime::Object = msg_send![rectangular_mask, mask];
+            assert!(!inner_mask.is_null());
+            let rectangular_path: *const c_void = msg_send![inner_mask, path];
+            assert!(CGPathContainsPoint(
+                rectangular_path,
+                std::ptr::null(),
+                NSPoint::new(10.1, 10.1),
+                false
+            ));
+            assert!(!CGPathContainsPoint(
+                rectangular_path,
+                std::ptr::null(),
+                NSPoint::new(5.0, 200.0),
+                false
+            ));
             assert!(con_terminal_pane_set_clip(
                 host.cast(),
                 0.0,
@@ -1221,7 +1244,7 @@ mod tests {
                 400.0,
                 0.0
             ));
-            assert!(con_terminal_canvas_set_clip(
+            assert!(!con_terminal_canvas_set_clip(
                 parent_ptr, 0.0, 0.0, 600.0, 400.0, 0.0
             ));
             con_terminal_canvas_apply_clip(host.cast());

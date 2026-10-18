@@ -1835,7 +1835,7 @@ impl GhosttyView {
 
     #[cfg(target_os = "macos")]
     fn apply_pane_clip(&self, window: &Window) {
-        let Some((bounds, radius)) = self.native_pane_clip else {
+        let Some((bounds, _radius)) = self.native_pane_clip else {
             return;
         };
         // The transition underlay is shared by the entire window. Only the
@@ -1848,7 +1848,9 @@ impl GhosttyView {
                     f64::from(bounds.top()),
                     f64::from(bounds.size.width),
                     f64::from(bounds.size.height),
-                    f64::from(radius),
+                    // GPUI owns the decorative curve. Applying it again to
+                    // the native surface multiplies independent AA coverage.
+                    0.0,
                 )
             };
             if changed {
