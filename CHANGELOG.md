@@ -4,6 +4,16 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.141`
+
+### Fixed
+
+**macOS**
+
+- Terminal pane corners have smoother, more even contours while preserving
+  terminal transparency, blur and the fine pane outline.
+  _(PR [#492](https://github.com/nowledge-co/con-terminal/pull/492) by [@wey-gu](https://github.com/wey-gu))_
+
 ## `v0.1.0-beta.140` - 2026-10-17
 
 ### Fixed
