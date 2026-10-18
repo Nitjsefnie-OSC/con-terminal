@@ -279,6 +279,92 @@ fn grid_size_for_pane(
     }
 }
 
+/// The painted grid a pointer is mapped onto.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct PointerGrid {
+    columns: u16,
+    rows: u16,
+    font_size_px: f32,
+    scale_factor: f32,
+    /// Logical px, padding included.
+    pane_height: f32,
+}
+
+/// A pointer mapped onto the painted grid.
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct GridPointer {
+    col: u16,
+    row: u16,
+    /// Device px from the pane origin, for Ghostty's selection gesture.
+    selection_x_px: f32,
+    selection_y_px: f32,
+    /// Device px from the grid origin, for Ghostty's mouse encoder.
+    report_x_px: f32,
+    report_y_px: f32,
+    geometry: SelectionGeometry,
+}
+
+/// Map a pointer at (`local_x`, `local_y`) logical px from the pane origin
+/// onto the painted grid. Returns `None` for non-finite positions, an empty
+/// grid, or a pointer in the padding unless `clamp_to_grid` is set.
+///
+/// `render()` paints a column every `cell_width_px` logical px, but Ghostty
+/// divides device px by the whole-pixel `physical_cell_size`. At fractional
+/// scales those differ (15.3 against 15 device px for a 9 px cell at 1.7x),
+/// and the error grows across a row (#486). So the positions handed to
+/// Ghostty are rescaled to put each painted cell on a device cell.
+fn pointer_in_grid(
+    local_x: f32,
+    local_y: f32,
+    grid: PointerGrid,
+    clamp_to_grid: bool,
+) -> Option<GridPointer> {
+    if grid.columns == 0 || grid.rows == 0 || !local_x.is_finite() || !local_y.is_finite() {
+        return None;
+    }
+    let scale = grid.scale_factor.max(f32::EPSILON);
+    let scale = if scale.is_finite() { scale } else { 1.0 };
+    let cell_width = cell_width_px(grid.font_size_px);
+    let cell_height = cell_height_px(grid.font_size_px);
+    let (device_cell_width, device_cell_height) = physical_cell_size(grid.font_size_px, scale);
+    let padding_left = (TERMINAL_PADDING_X_PX * scale).round().max(0.0);
+    let padding_top = (TERMINAL_PADDING_Y_PX * scale).round().max(0.0);
+
+    // Painted cells, measured from the grid origin.
+    let cells_x = (local_x - TERMINAL_PADDING_X_PX) / cell_width;
+    let cells_y = (local_y - TERMINAL_PADDING_Y_PX) / cell_height;
+    let columns = f32::from(grid.columns);
+    let rows = f32::from(grid.rows);
+    if !clamp_to_grid && (cells_x < 0.0 || cells_y < 0.0 || cells_x >= columns || cells_y >= rows) {
+        return None;
+    }
+    let col = cells_x.floor().clamp(0.0, columns - 1.0) as u16;
+    let row = cells_y.floor().clamp(0.0, rows - 1.0) as u16;
+
+    // Not clamped: drag autoscroll needs positions outside the grid.
+    let report_x_px = cells_x * device_cell_width as f32;
+    let report_y_px = cells_y * device_cell_height as f32;
+    // Autoscroll compares against the pane's bottom edge, padding included,
+    // in the same rescaled space as the pointer.
+    let pane_bottom_cells = (grid.pane_height - TERMINAL_PADDING_Y_PX) / cell_height;
+    let screen_height_px =
+        ((padding_top + pane_bottom_cells * device_cell_height as f32).ceil() as u32).max(1);
+    Some(GridPointer {
+        col,
+        row,
+        selection_x_px: padding_left + report_x_px,
+        selection_y_px: padding_top + report_y_px,
+        report_x_px,
+        report_y_px,
+        geometry: SelectionGeometry {
+            columns: u32::from(grid.columns),
+            cell_width_px: device_cell_width,
+            padding_left_px: padding_left as u32,
+            screen_height_px,
+        },
+    })
+}
+
 actions!(ghostty, [ConsumeTab, ConsumeTabPrev]);
 
 #[allow(dead_code)]
@@ -964,10 +1050,9 @@ impl GhosttyView {
         if action == VtMouseAction::Press && self.cell_from_event_position(pos).is_none() {
             return false;
         }
-        let Some(bounds) = self.pane_bounds else {
+        let Some(pointer) = self.grid_pointer(pos, true) else {
             return false;
         };
-        let scale = self.scale_factor.max(f32::EPSILON);
         self.terminal().is_some_and(|terminal| {
             terminal.mouse_event(VtMouseEvent {
                 action,
@@ -979,12 +1064,27 @@ impl GhosttyView {
                     control: self.mouse_modifiers.control,
                     alt: self.mouse_modifiers.alt,
                 },
-                surface_x_px: (f32::from(pos.x) - f32::from(bounds.origin.x)) * scale
-                    - (TERMINAL_PADDING_X_PX * scale).round(),
-                surface_y_px: (f32::from(pos.y) - f32::from(bounds.origin.y)) * scale
-                    - (TERMINAL_PADDING_Y_PX * scale).round(),
+                surface_x_px: pointer.report_x_px,
+                surface_y_px: pointer.report_y_px,
             })
         })
+    }
+
+    fn grid_pointer(&self, pos: Point<Pixels>, clamp_to_grid: bool) -> Option<GridPointer> {
+        let bounds = self.pane_bounds?;
+        let snapshot = self.snapshot.as_ref()?;
+        pointer_in_grid(
+            f32::from(pos.x) - f32::from(bounds.origin.x),
+            f32::from(pos.y) - f32::from(bounds.origin.y),
+            PointerGrid {
+                columns: snapshot.cols,
+                rows: snapshot.rows,
+                font_size_px: effective_font_size(self.initial_font_size),
+                scale_factor: self.scale_factor,
+                pane_height: f32::from(bounds.size.height),
+            },
+            clamp_to_grid,
+        )
     }
 
     fn selection_input_from_event_position(
@@ -992,48 +1092,15 @@ impl GhosttyView {
         pos: Point<Pixels>,
         clamp_to_grid: bool,
     ) -> Option<(SelectionPoint, SelectionGeometry)> {
-        let bounds = self.pane_bounds?;
-        let snapshot = self.snapshot.as_ref()?;
-        if snapshot.cols == 0 || snapshot.rows == 0 {
-            return None;
-        }
-        let font_size_px = effective_font_size(self.initial_font_size);
-        let scale = self.scale_factor.max(f32::EPSILON);
-        let (cell_width, cell_height) = physical_cell_size(font_size_px, scale);
-        let surface_x = (f32::from(pos.x) - f32::from(bounds.origin.x)) * scale;
-        let surface_y = (f32::from(pos.y) - f32::from(bounds.origin.y)) * scale;
-        let padding_left = (TERMINAL_PADDING_X_PX * scale).round().max(0.0) as u32;
-        let padding_top = (TERMINAL_PADDING_Y_PX * scale).round().max(0.0) as u32;
-        let grid_x = surface_x - padding_left as f32;
-        let grid_y = surface_y - padding_top as f32;
-        let grid_width = f32::from(snapshot.cols) * cell_width as f32;
-        let grid_height = f32::from(snapshot.rows) * cell_height as f32;
-        if !clamp_to_grid
-            && (grid_x < 0.0 || grid_y < 0.0 || grid_x >= grid_width || grid_y >= grid_height)
-        {
-            return None;
-        }
-
-        let grid_x = grid_x.clamp(0.0, (grid_width - f32::EPSILON).max(0.0));
-        let grid_y = grid_y.clamp(0.0, (grid_height - f32::EPSILON).max(0.0));
-        let col = ((grid_x as u32) / cell_width).min(u32::from(snapshot.cols - 1)) as u16;
-        let row = ((grid_y as u32) / cell_height).min(u32::from(snapshot.rows - 1)) as u16;
-        // Autoscroll compares against the whole pane, padding included, not
-        // the PTY pixel size, which covers only the cells.
-        let screen_height_px = ((f32::from(bounds.size.height) * scale).ceil() as u32).max(1);
+        let pointer = self.grid_pointer(pos, clamp_to_grid)?;
         Some((
             SelectionPoint {
-                col,
-                row,
-                surface_x_px: f64::from(surface_x),
-                surface_y_px: f64::from(surface_y),
+                col: pointer.col,
+                row: pointer.row,
+                surface_x_px: f64::from(pointer.selection_x_px),
+                surface_y_px: f64::from(pointer.selection_y_px),
             },
-            SelectionGeometry {
-                columns: u32::from(snapshot.cols),
-                cell_width_px: cell_width,
-                padding_left_px: padding_left,
-                screen_height_px,
-            },
+            pointer.geometry,
         ))
     }
 
@@ -3587,6 +3654,7 @@ mod tests {
         cursor_overlay_cell, effective_font_size, grid_size_for_pane, kitty_image_to_render_image,
         kitty_placement_geometry, physical_cell_size, rows_needing_refresh, vt_color_to_hsla,
     };
+    use super::{PointerGrid, pointer_in_grid};
     use con_ghostty::{
         ATTR_BOLD, ATTR_INVERSE, ATTR_UNDERLINE, KittyImage, KittyPlacement, ScreenSnapshot,
         VtCell, VtCursor,
@@ -3595,6 +3663,24 @@ mod tests {
     use std::sync::Arc;
 
     fn mouse_test_view(cx: &mut gpui::TestAppContext) -> gpui::Entity<super::GhosttyView> {
+        pty_test_view(
+            cx,
+            80,
+            1.5,
+            "stty raw -echo; printf '\x1b[?1002h\x1b[?1006hREADY'; exec sleep 30",
+            "READY",
+        )
+    }
+
+    /// A 14 px font view at `scale` over a real 24-row pty running `script`,
+    /// once the child has printed `ready`. The pane starts at (31, 47).
+    fn pty_test_view(
+        cx: &mut gpui::TestAppContext,
+        columns: u16,
+        scale: f32,
+        script: &str,
+        ready: &str,
+    ) -> gpui::Entity<super::GhosttyView> {
         use con_ghostty::linux::pty::LinuxPtyOptions;
         use gpui::{AppContext, Bounds, point, px, size};
         use std::time::{Duration, Instant};
@@ -3610,29 +3696,31 @@ mod tests {
             let terminal = view.terminal().unwrap();
             let mut options = LinuxPtyOptions::default();
             options.command_program = Some("/bin/sh".into());
-            options.command_args = Some(vec![
-                "-c".into(),
-                "stty raw -echo; printf '\x1b[?1002h\x1b[?1006hREADY'; exec sleep 30".into(),
-            ]);
+            options.command_args = Some(vec!["-c".into(), script.into()]);
+            let (cell_width_px, cell_height_px) = physical_cell_size(14.0, scale);
             options.size = con_ghostty::SurfaceSize {
-                columns: 80,
+                columns,
                 rows: 24,
-                width_px: 1120,
-                height_px: 720,
-                cell_width_px: 14,
-                cell_height_px: 30,
+                width_px: u32::from(columns) * cell_width_px,
+                height_px: 24 * cell_height_px,
+                cell_width_px,
+                cell_height_px,
             };
             terminal.spawn_with_options(options).unwrap();
             let deadline = Instant::now() + Duration::from_secs(3);
-            while !terminal.read_recent_lines(24).join(" ").contains("READY") {
-                assert!(Instant::now() < deadline, "mouse test PTY not ready");
+            while !terminal.read_recent_lines(24).join(" ").contains(ready) {
+                assert!(
+                    Instant::now() < deadline,
+                    "test PTY never printed {ready:?}"
+                );
                 std::thread::sleep(Duration::from_millis(10));
             }
             view.refresh_snapshot();
-            view.scale_factor = 1.5;
+            view.scale_factor = scale;
+            let width = (2.0 * PAD_X + f32::from(columns) * CELL_W).max(800.0);
             view.pane_bounds = Some(Bounds::new(
                 point(px(31.0), px(47.0)),
-                size(px(800.0), px(520.0)),
+                size(px(width), px(520.0)),
             ));
         });
         view
@@ -3647,7 +3735,8 @@ mod tests {
 
         let view = mouse_test_view(cx);
         view.update(cx, |view, _cx| {
-            // 1.5x scale: grid begins at (43, 57), cells are 14x30 device px.
+            // The painted 80 × 24 grid spans (43, 57) to (763, 537): 9 × 20 px
+            // cells. The 14 × 30 device px cell at 1.5x would end it at x ≈ 790.
             for button in [
                 Button::Left,
                 Button::Middle,
@@ -3655,7 +3744,7 @@ mod tests {
                 Button::Button4,
                 Button::Button7,
             ] {
-                for (x, y) in [(42.5, 80.0), (60.0, 56.5), (790.0, 80.0), (60.0, 537.0)] {
+                for (x, y) in [(42.5, 80.0), (60.0, 56.5), (763.5, 80.0), (60.0, 537.0)] {
                     assert!(
                         !view.report_mouse(point(px(x), px(y)), Action::Press, Some(button)),
                         "padding press {button:?} at ({x}, {y})"
@@ -3664,7 +3753,7 @@ mod tests {
                 assert!(view.report_mouse(point(px(43.0), px(57.0)), Action::Press, Some(button)));
             }
             assert!(view.report_mouse(
-                point(px(789.5), px(536.5)),
+                point(px(762.5), px(536.5)),
                 Action::Press,
                 Some(Button::Left)
             ));
@@ -3871,6 +3960,303 @@ mod tests {
         // 24 px padding + 86 × 9 px cells = 798 logical px, arriving as an
         // inexact device-to-logical conversion.
         assert_eq!(grid(1356.6 / 1.7, 600.0, 1.7).0, 86);
+    }
+
+    // A 14 px font paints 9 × 20 logical px cells inside 12 / 10 px padding.
+    // Expected cells below come from these numbers, not from the helpers the
+    // code uses, so a test can't share the code's mistake.
+    const CELL_W: f32 = 9.0;
+    const CELL_H: f32 = 20.0;
+    const PAD_X: f32 = 12.0;
+    const PAD_Y: f32 = 10.0;
+    // Whole-number device cells (1, 2), rounded down (1.25, 1.7, 1.75),
+    // rounded up (1.5), and rows drifting while columns don't (4/3).
+    const SCALES: [f32; 7] = [1.0, 1.25, 4.0 / 3.0, 1.5, 1.7, 1.75, 2.0];
+
+    fn pointer_grid(columns: u16, rows: u16, scale_factor: f32) -> PointerGrid {
+        PointerGrid {
+            columns,
+            rows,
+            font_size_px: 14.0,
+            scale_factor,
+            pane_height: 2.0 * PAD_Y + f32::from(rows) * CELL_H,
+        }
+    }
+
+    fn cell_at(x: f32, y: f32, grid: PointerGrid) -> Option<(u16, u16)> {
+        pointer_in_grid(x, y, grid, false).map(|pointer| (pointer.col, pointer.row))
+    }
+
+    /// The left or top edge, the centre and the end of cell `index`.
+    fn points_in_cell(padding: f32, cell: f32, index: u16) -> [f32; 3] {
+        let start = padding + f32::from(index) * cell;
+        [start, start + cell / 2.0, start + cell - 0.05]
+    }
+
+    #[test]
+    fn every_painted_column_maps_to_itself() {
+        // 1000 columns covers an 8K-wide pane at 1x.
+        for scale in SCALES {
+            let grid = pointer_grid(1000, 1, scale);
+            for col in 0..1000 {
+                for x in points_in_cell(PAD_X, CELL_W, col) {
+                    assert_eq!(
+                        cell_at(x, PAD_Y, grid),
+                        Some((col, 0)),
+                        "x = {x} at {scale}x"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn every_painted_row_maps_to_itself() {
+        for scale in SCALES {
+            let grid = pointer_grid(1, 60, scale);
+            for row in 0..60 {
+                for y in points_in_cell(PAD_Y, CELL_H, row) {
+                    assert_eq!(
+                        cell_at(PAD_X, y, grid),
+                        Some((0, row)),
+                        "y = {y} at {scale}x"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn centre_of_column_150_at_1_7x_is_column_150() {
+        // Issue #486: hit-testing with the rounded 15 px device cell, instead
+        // of the painted 15.3 px, put this pointer on column 153.
+        let x = PAD_X + 150.0 * CELL_W + CELL_W / 2.0;
+        assert_eq!(cell_at(x, PAD_Y, pointer_grid(200, 1, 1.7)), Some((150, 0)));
+    }
+
+    #[test]
+    fn padding_ends_where_the_painted_grid_ends() {
+        let grid = pointer_grid(80, 24, 1.5);
+        let right = PAD_X + 80.0 * CELL_W;
+        let bottom = PAD_Y + 24.0 * CELL_H;
+        for (x, y) in [
+            (PAD_X - 0.1, 50.0),
+            (50.0, PAD_Y - 0.1),
+            (right, 50.0),
+            (50.0, bottom),
+            (right + 30.0, bottom + 30.0),
+        ] {
+            assert_eq!(cell_at(x, y, grid), None, "({x}, {y})");
+        }
+        assert_eq!(cell_at(right - 0.5, bottom - 0.5, grid), Some((79, 23)));
+        assert_eq!(cell_at(PAD_X, PAD_Y, grid), Some((0, 0)));
+    }
+
+    #[test]
+    fn clamped_pointers_outside_the_grid_land_on_the_nearest_edge_cell() {
+        let grid = pointer_grid(80, 24, 1.7);
+        let mid_y = PAD_Y + 12.5 * CELL_H;
+        let mid_x = PAD_X + 40.5 * CELL_W;
+        for ((x, y), cell) in [
+            ((-50.0, mid_y), (0, 12)),
+            ((5000.0, mid_y), (79, 12)),
+            ((mid_x, -50.0), (40, 0)),
+            ((mid_x, 5000.0), (40, 23)),
+            ((-1.0e9, -1.0e9), (0, 0)),
+            ((1.0e9, 1.0e9), (79, 23)),
+        ] {
+            let pointer = pointer_in_grid(x, y, grid, true).unwrap();
+            assert_eq!((pointer.col, pointer.row), cell, "({x}, {y})");
+        }
+    }
+
+    #[test]
+    fn ghostty_finds_the_same_cell_and_offset_in_device_px() {
+        for scale in SCALES {
+            let grid = pointer_grid(300, 60, scale);
+            let device_cell_w = (CELL_W * scale).round();
+            let device_cell_h = (CELL_H * scale).round();
+            let device_pad_x = (PAD_X * scale).round();
+            let device_pad_y = (PAD_Y * scale).round();
+            for (col, row) in [(0, 0), (1, 1), (149, 29), (150, 30), (299, 59)] {
+                for (x, y) in points_in_cell(PAD_X, CELL_W, col)
+                    .into_iter()
+                    .zip(points_in_cell(PAD_Y, CELL_H, row))
+                {
+                    let pointer = pointer_in_grid(x, y, grid, false).unwrap();
+                    let geometry = pointer.geometry;
+                    assert_eq!(geometry.columns, 300);
+                    assert_eq!(geometry.cell_width_px as f32, device_cell_w);
+                    assert_eq!(geometry.padding_left_px as f32, device_pad_x);
+
+                    // Ghostty's selection gesture and mouse encoder divide
+                    // by the whole-pixel device cell.
+                    let selection_col = (pointer.selection_x_px - device_pad_x) / device_cell_w;
+                    let selection_row = (pointer.selection_y_px - device_pad_y) / device_cell_h;
+                    let report_col = pointer.report_x_px / device_cell_w;
+                    let report_row = pointer.report_y_px / device_cell_h;
+                    let painted_col = (x - PAD_X) / CELL_W;
+                    let painted_row = (y - PAD_Y) / CELL_H;
+                    for (device, painted, what) in [
+                        (selection_col, painted_col, "selection column"),
+                        (selection_row, painted_row, "selection row"),
+                        (report_col, painted_col, "report column"),
+                        (report_row, painted_row, "report row"),
+                    ] {
+                        assert!(
+                            (device - painted).abs() < 1e-3,
+                            "{what} at ({x}, {y}), {scale}x: {device} vs {painted}"
+                        );
+                    }
+                    assert_eq!(selection_col.floor() as u16, col);
+                    assert_eq!(selection_row.floor() as u16, row);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn autoscroll_height_uses_the_pointer_space() {
+        let screen_height = |pane_height: f32, scale: f32| {
+            let grid = PointerGrid {
+                pane_height,
+                ..pointer_grid(80, 25, scale)
+            };
+            pointer_in_grid(PAD_X, PAD_Y, grid, false)
+                .unwrap()
+                .geometry
+                .screen_height_px
+        };
+        // Whole-number device rows: the full pane, as before.
+        assert_eq!(screen_height(520.0, 1.5), 780);
+        // 27 px device rows for 26.67 px painted ones at 4/3: 13 px padding
+        // + 510 / 20 × 27 = 701.5, where the pane is 693.3 device px tall.
+        assert_eq!(screen_height(520.0, 4.0 / 3.0), 702);
+    }
+
+    #[test]
+    fn pane_edges_stay_within_a_device_pixel_of_their_true_position() {
+        for scale in SCALES {
+            let grid = pointer_grid(80, 25, scale);
+            let top_left = pointer_in_grid(0.0, 0.0, grid, true).unwrap();
+            assert!(top_left.selection_x_px.abs() < 1.0, "{scale}x");
+            assert!(top_left.selection_y_px.abs() < 1.0, "{scale}x");
+        }
+    }
+
+    #[test]
+    fn degenerate_scales_and_grids_do_not_panic() {
+        for scale in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            if let Some(pointer) = pointer_in_grid(50.0, 50.0, pointer_grid(80, 24, scale), true) {
+                assert!(pointer.col < 80 && pointer.row < 24, "{scale}x");
+                assert!(pointer.geometry.cell_width_px > 0, "{scale}x");
+                assert!(pointer.geometry.screen_height_px > 0, "{scale}x");
+            }
+        }
+        for (columns, rows) in [(0, 24), (80, 0)] {
+            assert!(pointer_in_grid(50.0, 50.0, pointer_grid(columns, rows, 1.5), true).is_none());
+        }
+    }
+
+    #[test]
+    fn non_finite_pointers_map_to_no_cell() {
+        let grid = pointer_grid(80, 24, 1.5);
+        for (x, y) in [
+            (f32::NAN, 50.0),
+            (50.0, f32::NAN),
+            (f32::INFINITY, 50.0),
+            (50.0, f32::NEG_INFINITY),
+        ] {
+            for clamp in [false, true] {
+                assert!(pointer_in_grid(x, y, grid, clamp).is_none(), "({x}, {y})");
+            }
+        }
+    }
+
+    #[test]
+    fn a_pane_inside_its_padding_has_no_cell_until_clamped() {
+        // grid_size_for_pane never reports less than one cell.
+        let grid = PointerGrid {
+            pane_height: 15.0,
+            ..pointer_grid(1, 1, 1.5)
+        };
+        assert_eq!(cell_at(5.0, 5.0, grid), None);
+        let pointer = pointer_in_grid(5.0, 5.0, grid, true).unwrap();
+        assert_eq!((pointer.col, pointer.row), (0, 0));
+    }
+
+    #[gpui::test]
+    fn mouse_reports_name_the_painted_column_at_fractional_scale(cx: &mut gpui::TestAppContext) {
+        use super::{VtMouseAction as Action, VtMouseButton as Button};
+        use gpui::{point, px};
+        use std::time::{Duration, Instant};
+
+        // SGR press of the left button on column 151, row 1 (both 1-based).
+        let expected = b"\x1b[<0;151;1M";
+        let script = format!(
+            "stty raw -echo; printf '\x1b[?1002h\x1b[?1006hREADY'; \
+             dd bs=1 count={} 2>/dev/null | od -An -tx1; exec sleep 30",
+            expected.len()
+        );
+        let view = pty_test_view(cx, 200, 1.7, &script, "READY");
+        view.update(cx, |view, _cx| {
+            // Centre of painted column 150 in row 0, with the pane at (31, 47).
+            let position = point(
+                px(31.0 + PAD_X + 150.0 * CELL_W + CELL_W / 2.0),
+                px(47.0 + PAD_Y + CELL_H / 2.0),
+            );
+            assert!(view.report_mouse(position, Action::Press, Some(Button::Left)));
+
+            let terminal = view.terminal().unwrap();
+            let expected_hex = expected
+                .iter()
+                .map(|byte| format!("{byte:02x}"))
+                .collect::<Vec<_>>()
+                .join(" ");
+            let deadline = Instant::now() + Duration::from_secs(3);
+            loop {
+                let output = terminal
+                    .read_recent_lines(24)
+                    .join(" ")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                if output.contains(&expected_hex) {
+                    break;
+                }
+                assert!(
+                    Instant::now() < deadline,
+                    "expected {expected_hex:?}, got {output:?}"
+                );
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        });
+    }
+
+    #[gpui::test]
+    fn link_lookup_uses_the_painted_column_at_fractional_scale(cx: &mut gpui::TestAppContext) {
+        use gpui::{point, px};
+
+        // The URL fills columns 140 to 150 of row 0.
+        let view = pty_test_view(
+            cx,
+            200,
+            1.7,
+            "stty raw -echo; printf '\x1b[1;141Hhttp://a.io'; exec sleep 30",
+            "http://a.io",
+        );
+        view.update(cx, |view, _cx| {
+            let centre_of = |col: f32| {
+                point(
+                    px(31.0 + PAD_X + col * CELL_W + CELL_W / 2.0),
+                    px(47.0 + PAD_Y + CELL_H / 2.0),
+                )
+            };
+            let link = view.link_at_position(centre_of(145.0)).unwrap();
+            assert_eq!((link.start_col, link.end_col), (140, 151));
+            // The rounded device cell used to map this to column 142.
+            assert_eq!(view.link_at_position(centre_of(139.0)), None);
+        });
     }
 
     #[gpui::test]

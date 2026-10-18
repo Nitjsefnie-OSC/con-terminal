@@ -14,6 +14,13 @@ con is still pre-release, so entries may group related beta work while the produ
   terminal transparency, blur and the fine pane outline.
   _(PR [#492](https://github.com/nowledge-co/con-terminal/pull/492) by [@wey-gu](https://github.com/wey-gu))_
 
+**Linux**
+
+- Clicks, selection, link hover and mouse input in terminal programs land on
+  the character under the pointer at fractional display scales. They no longer
+  drift toward the right on wide panes.
+  _(PR [#491](https://github.com/nowledge-co/con-terminal/pull/491) by [@Towerism](https://github.com/Towerism))_
+
 ## `v0.1.0-beta.140` - 2026-10-17
 
 ### Fixed
