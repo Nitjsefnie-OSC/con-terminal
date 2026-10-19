@@ -4,6 +4,16 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.142`
+
+### Fixed
+
+**macOS**
+
+- Homebrew casks use a supported macOS requirement, fixing installation and
+  upgrade failures caused by an obsolete operating-system version check.
+  _(PR [#494](https://github.com/nowledge-co/con-terminal/pull/494) by [@colmugx](https://github.com/colmugx))_
+
 ## `v0.1.0-beta.141` - 2026-10-18
 
 ### Fixed
