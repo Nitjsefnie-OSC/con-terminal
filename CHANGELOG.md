@@ -4,6 +4,16 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.143`
+
+### Fixed
+
+**macOS**
+
+- Transparent terminal panes clip content and headers to their rounded corners
+  to reduce square color remnants outside the pane outline. A dark rim can
+  still be visible around translucent corners; that remains under investigation.
+
 ## `v0.1.0-beta.142` - 2026-10-19
 
 ### Fixed

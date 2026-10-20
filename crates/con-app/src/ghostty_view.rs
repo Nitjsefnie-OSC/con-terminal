@@ -1835,7 +1835,7 @@ impl GhosttyView {
 
     #[cfg(target_os = "macos")]
     fn apply_pane_clip(&self, window: &Window) {
-        let Some((bounds, _radius)) = self.native_pane_clip else {
+        let Some((bounds, radius)) = self.native_pane_clip else {
             return;
         };
         // The transition underlay is shared by the entire window. Only the
@@ -1848,9 +1848,9 @@ impl GhosttyView {
                     f64::from(bounds.top()),
                     f64::from(bounds.size.width),
                     f64::from(bounds.size.height),
-                    // GPUI owns the decorative curve. Applying it again to
-                    // the native surface multiplies independent AA coverage.
-                    0.0,
+                    // A translucent exterior fill cannot erase native pixels.
+                    // Exclude terminal content outside the card before blending.
+                    f64::from(radius),
                 )
             };
             if changed {
@@ -3390,6 +3390,103 @@ mod tests {
         font, prelude::*, px,
     };
     use gpui_component::Theme;
+
+    #[gpui::test]
+    fn decorated_pane_removes_native_pixels_from_the_exterior_corners(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        use cocoa::foundation::{NSPoint, NSRect, NSSize};
+        use objc::{class, msg_send, sel, sel_impl};
+        use std::ffi::c_void;
+
+        unsafe extern "C" {
+            fn con_terminal_canvas_set_clip(
+                view: *mut c_void,
+                x: f64,
+                y: f64,
+                width: f64,
+                height: f64,
+                radius: f64,
+            ) -> bool;
+            fn CGPathContainsPoint(
+                path: *const c_void,
+                transform: *const c_void,
+                point: NSPoint,
+                even_odd: bool,
+            ) -> bool;
+        }
+        struct Fixture;
+        impl Render for Fixture {
+            fn render(
+                &mut self,
+                _: &mut Window,
+                _: &mut gpui::Context<Self>,
+            ) -> impl gpui::IntoElement {
+                div()
+            }
+        }
+        cx.add_window_view(|window, cx| unsafe {
+            let rect = NSRect::new(NSPoint::new(0.0, 0.0), NSSize::new(200.0, 120.0));
+            let parent: cocoa::base::id = msg_send![class!(NSView), alloc];
+            let parent: cocoa::base::id = msg_send![parent, initWithFrame:rect];
+            let gpui: cocoa::base::id = msg_send![class!(NSView), alloc];
+            let gpui: cocoa::base::id = msg_send![gpui, initWithFrame:rect];
+            let host: cocoa::base::id = msg_send![class!(NSScrollView), alloc];
+            let host: cocoa::base::id = msg_send![host, initWithFrame:rect];
+            let _: () = msg_send![parent, addSubview:gpui];
+            let _: () = msg_send![parent, addSubview:host];
+            con_terminal_canvas_set_clip(gpui.cast(), 0.0, 0.0, 200.0, 120.0, 0.0);
+            let app = std::sync::Arc::new(
+                con_ghostty::GhosttyApp::new(
+                    None, None, None, None, None, None, None, None, None, None, None, None, None,
+                    false,
+                )
+                .expect("native Ghostty app"),
+            );
+            let terminal = cx.new(|cx| super::GhosttyView::new(app, None, None, 14.0, cx));
+            terminal.update(cx, |view, _| {
+                view.host_view = Some(host);
+                let bounds = gpui::Bounds::new(
+                    gpui::point(px(0.0), px(0.0)),
+                    gpui::size(px(200.0), px(120.0)),
+                );
+                view.set_pane_clip(bounds, 8.0, window);
+                let layer: cocoa::base::id = msg_send![host, layer];
+                let mask: cocoa::base::id = msg_send![layer, mask];
+                assert!(
+                    !mask.is_null(),
+                    "glass corner retained the rectangular host"
+                );
+                let pane_mask: cocoa::base::id = msg_send![mask, mask];
+                assert!(!pane_mask.is_null());
+                let path: *const c_void = msg_send![pane_mask, path];
+                for (x, y) in [(0.5, 0.5), (199.5, 0.5), (0.5, 119.5), (199.5, 119.5)] {
+                    assert!(
+                        !CGPathContainsPoint(path, std::ptr::null(), NSPoint::new(x, y), false),
+                        "native pixels remain below the translucent corner at {x},{y}"
+                    );
+                }
+                assert!(CGPathContainsPoint(
+                    path,
+                    std::ptr::null(),
+                    NSPoint::new(100.0, 60.0),
+                    false
+                ));
+                view.set_pane_clip(bounds, 8.0, window);
+                let cached_path: *const c_void = msg_send![pane_mask, path];
+                assert_eq!(path, cached_path, "idle clipping rebuilt its path");
+                view.set_pane_clip(bounds, 0.0, window);
+                let clean_mask: cocoa::base::id = msg_send![layer, mask];
+                assert!(clean_mask.is_null(), "clean mode retained corner clipping");
+                view.host_view = None;
+            });
+            let _: () = msg_send![host, removeFromSuperview];
+            let _: () = msg_send![host, release];
+            let _: () = msg_send![gpui, release];
+            let _: () = msg_send![parent, release];
+            Fixture
+        });
+    }
 
     #[gpui::test]
     fn cached_layout_checks_actual_host_geometry_and_mask_attachment() {

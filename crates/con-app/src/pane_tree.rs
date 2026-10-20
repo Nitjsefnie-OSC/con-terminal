@@ -2511,7 +2511,10 @@ impl PaneTree {
             .map(|bar| {
                 #[cfg(target_os = "macos")]
                 {
-                    bar.child(crate::workspace::frame::pane_header_background(bar_bg))
+                    bar.child(crate::workspace::frame::pane_header_background(
+                        bar_bg,
+                        crate::workspace::frame::PANE_RADIUS,
+                    ))
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
@@ -3226,7 +3229,18 @@ impl PaneTree {
                     #[cfg(target_os = "macos")]
                     {
                         bar.relative()
-                            .child(crate::workspace::frame::pane_header_background(strip_bg))
+                            .child(crate::workspace::frame::pane_header_background(
+                                strip_bg,
+                                if tree_has_splits && !hide_pane_title_bar {
+                                    0.0
+                                } else {
+                                    crate::workspace::frame::pane_card_geometry(
+                                        tree_has_splits,
+                                        _canvas_depth,
+                                    )
+                                    .1
+                                },
+                            ))
                     }
                     #[cfg(not(target_os = "macos"))]
                     {
