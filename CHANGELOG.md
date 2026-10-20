@@ -4,7 +4,7 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
-## `v0.1.0-beta.144`
+## `v0.1.0-beta.144` - 2026-10-20
 
 ### Fixed
 
@@ -12,6 +12,7 @@ con is still pre-release, so entries may group related beta work while the produ
 
 - Split-pane titles and surface tabs use the same native material composition
   as terminal content, avoiding the extra dark outline at their rounded corners.
+  _(PR [#501](https://github.com/nowledge-co/con-terminal/pull/501) by [@wey-gu](https://github.com/wey-gu))_
 
 ## `v0.1.0-beta.143` - 2026-10-20
 
