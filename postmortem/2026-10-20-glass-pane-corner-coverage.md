@@ -1,7 +1,10 @@
 # Glass pane corner coverage
 
-Status: experimental candidate, not visually accepted. The maintainer still
-sees a black rim in the macOS 15 preview. Passing geometry/scene tests does not
+Status: the initial coverage correction shipped in beta.143 with an explicit
+remaining dark-rim limitation. A subsequent controlled split/header comparison
+identified the extra GPUI header fill; the native-material follow-up below is
+accepted by the maintainer in the updated local preview, with pane titles both
+shown and hidden. Passing geometry/scene tests does not
 establish correct composited edge colors. The macOS 27 comparison reached
 startup/readiness checks only: SSH screen capture was denied and no desktop
 session was available to inspect it. The maintainer requested a best-effort
@@ -103,13 +106,14 @@ Services state or screen-recording permissions were changed.
 
 ## Release boundary
 
-This correction addresses rectangular source coverage, not every visible
-corner artifact. The existing dark rim remains a known issue on macOS 15.
+The beta.143 correction addressed rectangular source coverage, not every visible
+corner artifact. Its remaining macOS 15 dark rim motivated the header-material
+follow-up below, which passed local preview acceptance.
 There is no evidence yet establishing the final corner appearance on macOS 27.
 Do not widen this patch to a new GPUI fork, change the presentation sync pin,
 make terminal glass opaque, or add an OS-version guess to hide the uncertainty.
-Follow-up acceptance still needs screenshots or an authorized desktop session
-on macOS 27, plus opaque/glass controls on macOS 15.
+Cross-version acceptance still needs screenshots or an authorized desktop session
+on macOS 27. The follow-up's macOS 15 opaque/glass checks are recorded below.
 
 ## Lessons
 
@@ -119,3 +123,68 @@ on macOS 27, plus opaque/glass controls on macOS 15.
   and opacity settings. Include translucent and opaque controls in acceptance.
 - Test the production radius forwarding, not only stored geometry or the FFI
   mask implementation in isolation.
+
+## Follow-up: Split Headers Versus a Single Pane
+
+The maintainer supplied two screenshots on October 20: a single rounded
+terminal had a quiet outline, while a split introduced dark detailing at the
+upper header corners. The single and split terminal leaves already use the
+same surround, contour and native clipping code. The important added layer
+was the opaque rounded GPUI header fill, not another terminal renderer.
+
+A local three-pane comparison retained the split geometry and toggled only
+the header-visibility setting. Hiding the headers removed the upper dark
+detailing. Restoring headers with native material instead of the GPUI fill
+also removed that detailing in the local macOS 15 inspection. This identifies
+the header composition as a controllable cause in this reproduction, not proof
+that every corner defect or macOS version has the same explanation.
+
+The follow-up keeps GPUI text and controls but moves their existing solid
+material to a noninteractive native sibling of the terminal host. It shares
+the pane's snapped bounds and upper radius, like a single pane's native
+terminal material. The GPU overlay now contains the same exterior cutout and
+fine contour whether or not a terminal has a title. No extra rounded header
+quad competes with those curves in the overlay.
+
+One native material spans both title and surface rows; its height comes from
+the final viewport top, excluding terminal seam overdraw. It follows terminal
+visibility, stays hidden after a return to a no-header layout, and is removed
+on detachment. Geometry/color/scale/visibility caching prevents repeated layer
+mutation or color allocation at idle. The shared canvas clip still constrains
+it, and genuine updates use the existing frame-scoped presentation request.
+No dependency pin or Windows/Linux renderer changes are involved.
+
+The local comparison uses an explicitly supplied private HOME and session,
+history, conversation and socket paths. Launch Services did not preserve the
+private HOME on an earlier wrapper launch; no settings were saved from that
+launch. Repeating the check with an explicit process environment and verifying
+the header toggle took effect established the controlled comparison. A config
+file's contents or hash alone is not evidence that the app loaded it.
+
+The native-material follow-up passed all 653 linked app tests without
+exclusions. The former standalone GPUI-header-quad test was removed with that
+primitive; the existing pane-control scene test now rejects a full-header GPU
+fill, and the native fixture exercises the real header setter, upper corners,
+cache reuse, noninteractive hit testing, terminal visibility, return to a
+no-header layout and removal. Two initial fixture mistakes (comparing an
+Objective-C rectangle directly and using the wrong numeric corner flag) were
+corrected; the latter was checked against the installed QuartzCore SDK.
+
+The final native embedded-assets dev build and formatting/whitespace checks
+passed. Local visual checks covered light/dark glass, light opaque mode, combined pane/surface titles,
+nested splits, switching tabs/surfaces, zoom/restore, and closing siblings back
+to a single pane. The maintainer subsequently confirmed the updated preview
+looked correct with titles both shown and hidden, and approved release.
+This is local visual acceptance, not a GPU pixel-difference test, a frame-rate benchmark, or macOS 27 /
+Windows/Linux runtime certification. The independent upstream alpha issue and
+display/power-state presentation acceptance remain separate.
+
+The release-preparation rerun initially stalled before test entry at
+`_dyld_start`. Sampling `codesign` on the same executable found CoreFoundation
+enumerating the large shared `target/debug/deps` directory. The freshly built
+test executable was copied to the small private preview directory and ad-hoc
+signed there; no system permissions or production signing settings changed.
+Its first full run passed 652 tests but hit the unrelated launch-helper
+protocol fixture's four-second deadline. That fixture passed in isolation.
+The same executable then passed all 653 tests with `--test-threads=1`, without
+skipping tests or changing source or test deadlines.

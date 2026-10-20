@@ -156,8 +156,11 @@ have its old split-sized mask.
   the path's bounds even if it has a hole. The caption row owns its own material,
   so docking controls does not double-composite the sidebar background.
 - AppKit clips terminal host layers against the shared rectangular viewport
-  and each leaf's rounded card bounds. The GPUI header uses the same top
-  radius. A translucent exterior cutout cannot erase rectangular terminal or
+  and each leaf's rounded card bounds. Terminal title/surface header material
+  is a noninteractive AppKit sibling below GPUI, with the same upper corner
+  radius. GPUI retains header text, controls and the common card surround;
+  it must not add another rounded header fill to its transparent overlay.
+  A translucent exterior cutout cannot erase rectangular terminal or
   header pixels underneath it: exclude those pixels before compositing the
   workspace material. A view-backed NSScrollView must first
   receive its own backing layer when a clip is required. A Metal-backed
@@ -166,8 +169,11 @@ have its old split-sized mask.
 - Corner cutouts use one circular curve with tangent-continuous endpoints.
   Do not expand it to compensate for masks: displaced coverage boundaries make
   contour thickness uneven. Keep the native mask, header and contour on the
-  same snapped card bounds and radius. Header fills remain opaque inside the
-  card; only the uppermost header or surface strip rounds its top corners.
+  same snapped card bounds and radius. Native header material remains opaque
+  inside the card, with square lower corners. One material spans the title and
+  any surface strip: derive its height from the actual terminal viewport's
+  top relative to the pane, not duplicate fixed header heights. Keep the
+  terminal host's 2pt seam overdraw out of that measurement.
   Keep the rest of the terminal untouched. Leave AppKit's
   container's backing-store composition alone: Con owns host masks, not the
   parent's backing layer.
@@ -181,6 +187,11 @@ have its old split-sized mask.
   invalidates otherwise unchanged terminal layouts when the outer canvas moves.
 - A header below another header has square top corners, avoiding holes at the
   title/surface-strip join. An undecorated single terminal keeps a zero radius.
+- Header material follows its host's visibility, including tab/surface changes
+  and pane zoom. No-header layouts hide the cached material, even if a later
+  visibility update reveals the terminal. Detachment removes the sibling.
+  Cache unchanged geometry, color, scale and visibility before allocating color
+  objects or changing layers; do not rebuild native decoration on terminal output.
 - Existing frame-scoped native presentation synchronization remains in place.
   A shape mask must not introduce an opaque terminal backing, a second glass
   fill or a delayed geometry update.

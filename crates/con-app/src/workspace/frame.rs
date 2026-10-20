@@ -523,61 +523,9 @@ pub(crate) fn header_background(color: Hsla) -> impl IntoElement {
     .left_0()
 }
 
-pub(crate) fn pane_header_background(color: Hsla, radius: f32) -> impl IntoElement {
-    gpui::canvas(
-        |_, _, _| {},
-        move |bounds, (), window, _| {
-            // Do not leave an opaque header underneath the translucent exterior.
-            let bounds =
-                crate::terminal_geometry::snap_terminal_bounds(bounds, window.scale_factor());
-            let mut quad = gpui::fill(bounds, color);
-            quad.corner_radii.top_left = px(radius);
-            quad.corner_radii.top_right = px(radius);
-            window.paint_quad(quad);
-        },
-    )
-    .absolute()
-    .size_full()
-    .top_0()
-    .left_0()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[gpui::test]
-    fn pane_header_does_not_leave_square_opaque_pixels_under_the_corner(
-        cx: &mut gpui::TestAppContext,
-    ) {
-        use gpui::ParentElement;
-        struct Header;
-        impl gpui::Render for Header {
-            fn render(&mut self, _: &mut Window, _: &mut gpui::Context<Self>) -> impl IntoElement {
-                gpui::div()
-                    .relative()
-                    .left(px(0.3))
-                    .top(px(0.3))
-                    .w(px(200.0))
-                    .h(px(24.0))
-                    .child(pane_header_background(gpui::white(), PANE_RADIUS))
-            }
-        }
-        let (_, cx) = cx.add_window_view(|_, _| Header);
-        cx.update(|window, cx| {
-            let _ = window.draw(cx);
-            let quads = window.painted_quads();
-            assert_eq!(quads.len(), 1);
-            let quad = &quads[0];
-            let radius = PANE_RADIUS * window.scale_factor();
-            assert_eq!(quad.bounds.origin.x.0.fract(), 0.0);
-            assert_eq!(quad.bounds.origin.y.0.fract(), 0.0);
-            assert_eq!(quad.corner_radii.top_left.0, radius);
-            assert_eq!(quad.corner_radii.top_right.0, radius);
-            assert_eq!(quad.corner_radii.bottom_left.0, 0.0);
-            assert_eq!(quad.corner_radii.bottom_right.0, 0.0);
-        });
-    }
 
     #[test]
     fn agent_edges_follow_terminal_cards_and_the_visible_input_tray() {

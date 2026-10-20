@@ -4,6 +4,15 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.144`
+
+### Fixed
+
+**macOS**
+
+- Split-pane titles and surface tabs use the same native material composition
+  as terminal content, avoiding the extra dark outline at their rounded corners.
+
 ## `v0.1.0-beta.143` - 2026-10-20
 
 ### Fixed
