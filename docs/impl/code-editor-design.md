@@ -11,6 +11,27 @@ not a separate top-level editor area and there is no standalone `con-editor`
 crate. Terminal panes, editor panes, the input bar, and the agent panel all
 share the existing workspace layout and close/focus machinery.
 
+On macOS, editor panes use the terminal card's shared `pane_card_geometry`,
+concentric corner radii and edge color. GPUI draws the editor fill and its fine
+edge in one `card_material` quad, over one flat chrome backing. Do not use
+`PaneSurround` here: its complementary SVG cutouts belong to native terminal
+hosts, and overlap a GPUI quad's independently antialiased curve. The pane owns
+the background; the file-tab row, editor root, empty state and status row must
+not paint square fills over its corners. File content stays between the tab
+and status rows, including image and Markdown previews. Retain the same frame
+when zooming or closing a file.
+Windows/Linux retain their existing pane presentation until their terminal
+card treatment is aligned separately; macOS native layer code is not reused
+for GPUI editor content.
+
+File names, toolbar tooltips and status information use the system UI font;
+source text and line numbers remain monospace. A neutral tab fill identifies
+the active file without a theme-dependent accent, and temporary titles stay
+italic. File and pane controls use component buttons that stop title-drag
+propagation and restore editor focus. The status row separates the truncatable
+path (full path on hover) from cursor/image details; an unsaved-close warning
+takes priority over those details at narrow widths.
+
 The left side of the window has two tab-orientation modes:
 
 - horizontal tabs: file/search is the left sidebar panel,

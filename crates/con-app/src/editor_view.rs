@@ -10,16 +10,18 @@ use crate::{
     editor_preview, editor_syntax,
 };
 use crossbeam_channel::{Receiver, Sender};
+use gpui::prelude::FluentBuilder;
 use gpui::{
     App, Bounds, Context, CursorStyle, EventEmitter, ExternalPaths, FocusHandle, Focusable,
     FontWeight, Hsla, InteractiveElement, IntoElement, ListHorizontalSizingBehavior, MouseButton,
     MouseDownEvent, MouseMoveEvent, MouseUpEvent, ObjectFit, ParentElement, Pixels, Point, Render,
-    ScrollHandle, ScrollStrategy, SharedString, Styled, StyledImage, StyledText, Task,
-    UniformListScrollHandle, Window, div, img, px, uniform_list,
+    ScrollHandle, ScrollStrategy, SharedString, StatefulInteractiveElement, Styled, StyledImage,
+    StyledText, Task, UniformListScrollHandle, Window, div, img, px, uniform_list,
 };
 use gpui_component::{
     ActiveTheme, Theme,
     scroll::{Scrollbar, ScrollbarHandle, ScrollbarMode},
+    tooltip::Tooltip,
 };
 use std::{
     collections::HashMap,
@@ -1921,7 +1923,16 @@ impl Render for EditorView {
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(theme.background)
+                .map(|view| {
+                    #[cfg(target_os = "macos")]
+                    {
+                        view
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        view.bg(theme.background)
+                    }
+                })
                 .text_color(theme.muted_foreground)
                 .font_family(ui_font)
                 .child("No file open")
@@ -1950,7 +1961,7 @@ impl Render for EditorView {
         let widest_line_index = active.widest_line_index;
         let line_height = px(metrics.line_height);
         let gutter_bg = theme.muted.opacity(0.04);
-        let gutter_color = theme.muted_foreground.opacity(0.42);
+        let gutter_color = theme.muted_foreground;
         let preview_active = self.preview_active();
         let image_tab = self.tabs[active_index].kind == EditorTabKind::Image;
         if preview_active {
@@ -1978,50 +1989,71 @@ impl Render for EditorView {
         } else {
             format!(" — {diagnostic_count} issues")
         };
-        let status_text: SharedString = if image_tab {
+        let status_detail: SharedString = if image_tab {
             let (size_label, dimensions_label) =
                 image_labels(active.image_file_size, active.image_dimensions);
-            format!(
-                "{size_label} — {dimensions_label} — {}",
-                active.path.display()
-            )
-            .into()
+            format!("{size_label} / {dimensions_label}").into()
         } else {
             format!(
-                "{} lines — Ln {}, Col {}{} — {}",
-                line_count,
+                "Ln {}, Col {}{}",
                 cursor.row + 1,
                 cursor_visual_column + 1,
                 diagnostics_label,
-                active.path.display()
             )
             .into()
         };
+        let status_path: SharedString = active.path.display().to_string().into();
+        let path_tooltip = status_path.clone();
         let dirty_close_blocked = self.dirty_close_blocked_tab == Some(active_index);
         let mut status_bar = div()
-            .h(px(22.0))
+            .h((crate::ui_scale::ui_px(&theme, 14.0) + px(8.0)).max(px(22.0)))
             .flex_shrink_0()
             .flex()
             .items_center()
             .justify_between()
             .gap(px(12.0))
             .px(px(12.0))
-            .bg(theme.muted.opacity(0.05))
-            .child(
-                div()
-                    .min_w_0()
-                    .truncate()
-                    .text_size(px(10.5))
-                    .text_color(theme.muted_foreground.opacity(0.55))
-                    .font_family(mono_font.clone())
-                    .child(status_text),
-            );
+            .map(|bar| {
+                #[cfg(target_os = "macos")]
+                {
+                    bar
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    bar.bg(theme.muted.opacity(0.05))
+                }
+            })
+            .when(!dirty_close_blocked, |bar| {
+                bar.child(
+                    div()
+                        .id(("editor-file-location", self.view_id))
+                        .flex_1()
+                        .min_w_0()
+                        .truncate()
+                        .text_size(crate::ui_scale::ui_px(&theme, 10.5))
+                        .text_color(theme.muted_foreground)
+                        .font_family(ui_font.clone())
+                        .tooltip(move |window, cx| {
+                            Tooltip::new(path_tooltip.clone()).build(window, cx)
+                        })
+                        .child(status_path),
+                )
+                .child(
+                    div()
+                        .flex_shrink_0()
+                        .text_size(crate::ui_scale::ui_px(&theme, 10.5))
+                        .text_color(theme.muted_foreground)
+                        .font_family(ui_font.clone())
+                        .child(status_detail),
+                )
+            });
         if dirty_close_blocked {
             status_bar = status_bar.child(
                 div()
-                    .flex_shrink_0()
-                    .text_size(px(10.5))
-                    .text_color(theme.warning_foreground.opacity(0.86))
+                    .min_w_0()
+                    .truncate()
+                    .text_size(crate::ui_scale::ui_px(&theme, 10.5))
+                    .text_color(theme.warning_foreground)
                     .font_family(ui_font.clone())
                     .child("Unsaved changes - save before closing"),
             );
@@ -2310,7 +2342,18 @@ impl Render for EditorView {
             .size_full()
             .flex()
             .flex_col()
-            .bg(theme.background)
+            // The macOS pane owns the rounded fill. Square backgrounds here
+            // would cover its lower corners, even with overflow_hidden().
+            .map(|view| {
+                #[cfg(target_os = "macos")]
+                {
+                    view
+                }
+                #[cfg(not(target_os = "macos"))]
+                {
+                    view.bg(theme.background)
+                }
+            })
             .cursor(if image_tab {
                 CursorStyle::Arrow
             } else {

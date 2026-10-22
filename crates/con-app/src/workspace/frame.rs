@@ -72,12 +72,56 @@ pub(super) fn agent_vertical_insets(
 }
 
 pub(crate) fn card_edge(radius: f32, foreground: Hsla, dark: bool) -> gpui::Div {
-    edge(
-        radius,
-        foreground.opacity(if dark { 0.12 } else { 0.075 }),
-        false,
-        true,
+    edge(radius, card_edge_color(foreground, dark), false, true)
+}
+
+fn card_edge_color(foreground: Hsla, dark: bool) -> Hsla {
+    foreground.opacity(if dark { 0.12 } else { 0.075 })
+}
+
+/// GPUI cards do not need the native terminal's complementary corner cutouts.
+/// Draw fill and edge in one quad so their antialiasing shares one contour.
+pub(crate) fn card_material(
+    radius: f32,
+    color: Hsla,
+    foreground: Hsla,
+    dark: bool,
+) -> impl IntoElement {
+    gpui::canvas(
+        |bounds, window, _| {
+            crate::terminal_geometry::snap_terminal_bounds(bounds, window.scale_factor())
+        },
+        move |_, bounds, window, _| {
+            let radii = window_concentric_corners(bounds, radius, window);
+            window.paint_quad(card_material_quad(
+                bounds,
+                radii,
+                color,
+                card_edge_color(foreground, dark),
+                window.scale_factor(),
+            ));
+        },
     )
+    .absolute()
+    .size_full()
+    .top_0()
+    .left_0()
+}
+
+fn card_material_quad(
+    bounds: Bounds<Pixels>,
+    radii: gpui::Corners<Pixels>,
+    color: Hsla,
+    edge: Hsla,
+    scale: f32,
+) -> gpui::PaintQuad {
+    let mut quad = gpui::fill(bounds, color);
+    quad.corner_radii = radii;
+    if radii != gpui::Corners::default() {
+        quad.border_widths = gpui::Edges::all(px(1.0 / scale));
+        quad.border_color = edge;
+    }
+    quad
 }
 
 /// Workspace card fill whose corners follow [`window_concentric_corners`].
@@ -773,7 +817,6 @@ unsafe extern "C" {
         blue: f64,
         alpha: f64,
     ) -> bool;
-    fn con_terminal_canvas_radius(view: *mut std::ffi::c_void) -> f64;
     fn con_window_corner_radius(view: *mut std::ffi::c_void) -> f64;
     fn con_terminal_canvas_set_clip(
         view: *mut std::ffi::c_void,
@@ -783,6 +826,7 @@ unsafe extern "C" {
         height: f64,
         radius: f64,
     ) -> bool;
+    #[cfg(test)]
     fn con_terminal_canvas_header_corners(
         view: *mut std::ffi::c_void,
         x: f64,
@@ -791,46 +835,45 @@ unsafe extern "C" {
     ) -> u8;
 }
 
-pub(crate) fn header_background(color: Hsla) -> impl IntoElement {
-    gpui::canvas(
-        |_, _, _| {},
-        move |bounds, (), window, _| {
-            use raw_window_handle::HasWindowHandle;
-            let (corners, radius) = HasWindowHandle::window_handle(window)
-                .ok()
-                .and_then(|handle| {
-                    if let raw_window_handle::RawWindowHandle::AppKit(handle) = handle.as_raw() {
-                        Some(unsafe {
-                            (
-                                con_terminal_canvas_header_corners(
-                                    handle.ns_view.as_ptr(),
-                                    f64::from(bounds.left()),
-                                    f64::from(bounds.top()),
-                                    f64::from(bounds.size.width),
-                                ),
-                                con_terminal_canvas_radius(handle.ns_view.as_ptr()) as f32,
-                            )
-                        })
-                    } else {
-                        None
-                    }
-                })
-                .unwrap_or((0, 0.0));
-            let mut quad = gpui::fill(bounds, color);
-            quad.corner_radii.top_left = px(if corners & 1 != 0 { radius } else { 0.0 });
-            quad.corner_radii.top_right = px(if corners & 2 != 0 { radius } else { 0.0 });
-            window.paint_quad(quad);
-        },
-    )
-    .absolute()
-    .size_full()
-    .top_0()
-    .left_0()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gpui_card_material_keeps_fill_alpha_and_a_single_physical_pixel_edge() {
+        let bounds = Bounds::new(point(px(5.0), px(32.0)), gpui::size(px(320.0), px(240.0)));
+        for dark in [false, true] {
+            let foreground = if dark { gpui::white() } else { gpui::black() };
+            let fill = if dark { gpui::black() } else { gpui::white() }.opacity(0.55);
+            for scale in [1.0, 1.5, 2.0] {
+                for radius in [0.0, 4.0, PANE_RADIUS] {
+                    let radii = gpui::Corners::all(px(radius));
+                    let quad = card_material_quad(
+                        bounds,
+                        radii,
+                        fill,
+                        card_edge_color(foreground, dark),
+                        scale,
+                    );
+                    assert!(
+                        quad.background == gpui::Background::from(fill),
+                        "do not make chrome opaque"
+                    );
+                    assert_eq!(quad.corner_radii, radii);
+                    if radius == 0.0 {
+                        assert_eq!(
+                            quad.border_widths,
+                            gpui::Edges::default(),
+                            "clean mode stays flush"
+                        );
+                    } else {
+                        assert_eq!(quad.border_widths, gpui::Edges::all(px(1.0 / scale)));
+                        assert_eq!(quad.border_color, card_edge_color(foreground, dark));
+                    }
+                }
+            }
+        }
+    }
 
     #[gpui::test]
     fn compact_canvas_gutters_do_not_repaint_the_caption(cx: &mut gpui::TestAppContext) {

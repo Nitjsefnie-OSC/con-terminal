@@ -2557,7 +2557,7 @@ impl PaneTree {
         is_focused: bool,
         tree_has_splits: bool,
         is_zoomed: bool,
-        tab_accent_inactive_alpha: f32,
+        _tab_accent_inactive_alpha: f32,
         hide_pane_title_bar: bool,
         close_pane_cb: PaneCallback,
         toggle_zoom_cb: PaneCallback,
@@ -2570,8 +2570,33 @@ impl PaneTree {
         let active_index = editor.active_tab_index();
         let chrome = EditorChromeState::new(is_focused, tree_has_splits, hide_pane_title_bar);
         let button_color = theme.muted_foreground;
-        let bar_height = mono_px(theme, EDITOR_MERGED_BAR_HEIGHT);
+        let bar_height =
+            mono_px(theme, EDITOR_MERGED_BAR_HEIGHT).max(crate::ui_scale::ui_px(theme, 24.0));
         let button_hover_bg = theme.foreground.opacity(0.08);
+        let action_size = crate::ui_scale::ui_space_px(theme, 20.0);
+        let action = |id: ElementId, label: SharedString| {
+            Button::new(id)
+                .custom(
+                    ButtonCustomVariant::new(cx)
+                        .color(theme.transparent)
+                        .foreground(button_color)
+                        .hover(button_hover_bg)
+                        .active(theme.foreground.opacity(0.12)),
+                )
+                .size(action_size)
+                .w(action_size)
+                .h(action_size)
+                .p_0()
+                .rounded(px(5.0))
+                .flex_shrink_0()
+                .tab_stop(false)
+                .accessibility_label(label.clone())
+                .tooltip(label)
+                .on_mouse_down(MouseButton::Left, |_, window, cx| {
+                    window.prevent_default();
+                    cx.stop_propagation();
+                })
+        };
         let focus_cb_bar = focus_pane_cb.clone();
         let mut bar = div()
             .id(ElementId::Name(
@@ -2587,15 +2612,17 @@ impl PaneTree {
             .gap(px(2.0))
             .px(px(6.0))
             .map(|bar| {
-                let color = Self::pane_chrome_bg(theme, is_focused, tab_accent_inactive_alpha);
                 #[cfg(target_os = "macos")]
                 {
-                    bar.relative()
-                        .child(crate::workspace::frame::header_background(color))
+                    bar
                 }
                 #[cfg(not(target_os = "macos"))]
                 {
-                    bar.bg(color)
+                    bar.bg(Self::pane_chrome_bg(
+                        theme,
+                        is_focused,
+                        _tab_accent_inactive_alpha,
+                    ))
                 }
             })
             .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
@@ -2649,21 +2676,20 @@ impl PaneTree {
             } else {
                 theme.muted_foreground
             };
+            let active_fill = theme.foreground.opacity(if chrome.dim_active_fill {
+                0.045
+            } else if theme.is_dark() {
+                0.085
+            } else {
+                0.065
+            });
             let tab_bg = if is_active {
-                if chrome.dim_active_fill {
-                    // Match the approved prototype: unfocused panes dim the
-                    // active fill by compositing tab_active at 70% over the
-                    // opaque bar background.
-                    Self::pane_chrome_bg(theme, is_focused, tab_accent_inactive_alpha)
-                        .blend(theme.tab_active.opacity(0.7))
-                } else {
-                    theme.tab_active
-                }
+                active_fill
             } else {
                 theme.transparent
             };
             let hover_bg = if is_active {
-                theme.tab_active
+                active_fill
             } else {
                 theme.foreground.opacity(0.08)
             };
@@ -2681,9 +2707,9 @@ impl PaneTree {
                 .flex_shrink_0()
                 .min_w_0()
                 .max_w(px(190.0))
-                .h(mono_px(theme, 22.0))
+                .h(bar_height - px(6.0))
                 .items_center()
-                .gap(px(5.0))
+                .gap(px(6.0))
                 .pl(px(8.0))
                 .pr(px(6.0))
                 .rounded(px(6.0))
@@ -2701,6 +2727,22 @@ impl PaneTree {
                         }
                     });
                 });
+
+            let icon = if crate::editor_syntax::is_image_path(std::path::Path::new(&name)) {
+                "phosphor/image.svg"
+            } else if crate::editor_syntax::language_for_path(std::path::Path::new(&name)).is_some()
+            {
+                "phosphor/file-code.svg"
+            } else {
+                "phosphor/file-text.svg"
+            };
+            tab = tab.child(
+                svg()
+                    .path(icon)
+                    .size(crate::ui_scale::ui_icon_px(theme, 12.0))
+                    .flex_shrink_0()
+                    .text_color(label_color),
+            );
 
             if dirty {
                 tab = tab.child(
@@ -2720,10 +2762,14 @@ impl PaneTree {
                     .overflow_hidden()
                     .whitespace_nowrap()
                     .text_ellipsis()
-                    .text_size(mono_px(theme, 12.0))
-                    .line_height(mono_px(theme, 14.0))
-                    .font_family(theme.mono_font_family.clone())
-                    .font_weight(FontWeight::MEDIUM)
+                    .text_size(crate::ui_scale::ui_px(theme, 11.5))
+                    .line_height(crate::ui_scale::ui_px(theme, 14.0))
+                    .font_family(theme.font_family.clone())
+                    .font_weight(if is_active {
+                        FontWeight::MEDIUM
+                    } else {
+                        FontWeight::NORMAL
+                    })
                     .map(|label| if temporary { label.italic() } else { label })
                     .text_color(label_color)
                     .child(SharedString::from(name)),
@@ -2731,19 +2777,14 @@ impl PaneTree {
 
             let close_view = view.clone();
             let focus_cb_close = focus_pane_cb.clone();
-            let close_hover_bg = theme.foreground.opacity(0.10);
-            let mut close = div()
-                .id(ElementId::Name(
-                    format!("editor-file-close-{pane_id}-{index}").into(),
-                ))
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(px(14.0))
-                .flex_shrink_0()
-                .rounded(px(4.0))
-                .cursor_pointer()
-                .hover(move |s| s.bg(close_hover_bg));
+            let mut close = action(
+                ElementId::Name(format!("editor-file-close-{pane_id}-{index}").into()),
+                "Close file".into(),
+            )
+            .debug_selector(move || format!("editor-file-close-{index}"))
+            .size(crate::ui_scale::ui_space_px(theme, 16.0))
+            .w(crate::ui_scale::ui_space_px(theme, 16.0))
+            .h(crate::ui_scale::ui_space_px(theme, 16.0));
             if !is_active {
                 close = close
                     .invisible()
@@ -2751,8 +2792,7 @@ impl PaneTree {
             }
             tab = tab.child(
                 close
-                    .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
-                        window.prevent_default();
+                    .on_click(move |_event, window, cx| {
                         cx.stop_propagation();
                         focus_cb_close(pane_id, window, cx);
                         close_view.update(cx, |editor, cx| {
@@ -2763,7 +2803,7 @@ impl PaneTree {
                     .child(
                         svg()
                             .path("phosphor/x.svg")
-                            .size(mono_icon_px(theme, 8.0))
+                            .size(crate::ui_scale::ui_icon_px(theme, 9.0))
                             .text_color(button_color),
                     ),
             );
@@ -2781,46 +2821,34 @@ impl PaneTree {
             let preview_view = view.clone();
             let focus_cb_preview = focus_pane_cb.clone();
             bar = bar.child(
-                div()
-                    .id(ElementId::Name(
-                        format!("editor-preview-toggle-{pane_id}").into(),
-                    ))
-                    .flex()
-                    .items_center()
-                    .justify_center()
-                    .w(px(24.0))
-                    .h(px(20.0))
-                    .flex_shrink_0()
-                    .rounded(px(4.0))
-                    .cursor_pointer()
-                    .hover(move |s| s.bg(button_hover_bg))
-                    .tooltip(move |window, cx| {
-                        Tooltip::new(if preview_active {
-                            "Edit markdown"
+                action(
+                    ElementId::Name(format!("editor-preview-toggle-{pane_id}").into()),
+                    if preview_active {
+                        "Edit Markdown"
+                    } else {
+                        "Preview Markdown"
+                    }
+                    .into(),
+                )
+                .debug_selector(|| "editor-preview-toggle".into())
+                .on_click(move |_event, window, cx| {
+                    cx.stop_propagation();
+                    focus_cb_preview(pane_id, window, cx);
+                    preview_view.update(cx, |editor, cx| {
+                        editor.focus_handle(cx).focus(window, cx);
+                        editor.toggle_preview(cx);
+                    });
+                })
+                .child(
+                    svg()
+                        .path(if preview_active {
+                            "phosphor/code.svg"
                         } else {
-                            "Preview markdown"
+                            "phosphor/eye.svg"
                         })
-                        .build(window, cx)
-                    })
-                    .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
-                        window.prevent_default();
-                        cx.stop_propagation();
-                        focus_cb_preview(pane_id, window, cx);
-                        preview_view.update(cx, |editor, cx| {
-                            editor.focus_handle(cx).focus(window, cx);
-                            editor.toggle_preview(cx);
-                        });
-                    })
-                    .child(
-                        svg()
-                            .path(if preview_active {
-                                "phosphor/code.svg"
-                            } else {
-                                "phosphor/eye.svg"
-                            })
-                            .size(mono_icon_px(theme, 12.0))
-                            .text_color(button_color),
-                    ),
+                        .size(crate::ui_scale::ui_icon_px(theme, 12.0))
+                        .text_color(button_color),
+                ),
             );
         }
 
@@ -2832,56 +2860,41 @@ impl PaneTree {
                 "Fullscreen"
             }
             .into();
-            let zoom = div()
-                .id(ElementId::Name(format!("pane-zoom-{pane_id}").into()))
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(px(20.0))
-                .flex_shrink_0()
-                .rounded(px(4.0))
-                .cursor_pointer()
-                .hover(move |s| s.bg(button_hover_bg))
-                .tooltip(move |window, cx| Tooltip::new(zoom_tooltip.clone()).build(window, cx))
-                .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
-                    window.prevent_default();
-                    cx.stop_propagation();
-                    focus_cb_zoom(pane_id, window, cx);
-                    toggle_zoom_cb(pane_id, window, cx);
-                })
-                .child(
-                    svg()
-                        .path(if is_zoomed {
-                            "phosphor/frame-corners.svg"
-                        } else {
-                            "phosphor/corners-out.svg"
-                        })
-                        .size(mono_icon_px(theme, 11.0))
-                        .text_color(button_color),
-                );
-            let close = div()
-                .id(ElementId::Name(format!("pane-close-{pane_id}").into()))
-                .debug_selector(|| "editor-pane-close".into())
-                .flex()
-                .items_center()
-                .justify_center()
-                .size(px(20.0))
-                .flex_shrink_0()
-                .rounded(px(4.0))
-                .cursor_pointer()
-                .hover(move |s| s.bg(button_hover_bg))
-                .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
-                    window.prevent_default();
-                    cx.stop_propagation();
-                    focus_pane_cb(pane_id, window, cx);
-                    close_pane_cb(pane_id, window, cx);
-                })
-                .child(
-                    svg()
-                        .path("phosphor/x.svg")
-                        .size(mono_icon_px(theme, 11.0))
-                        .text_color(button_color),
-                );
+            let zoom = action(
+                ElementId::Name(format!("pane-zoom-{pane_id}").into()),
+                zoom_tooltip,
+            )
+            .on_click(move |_event, window, cx| {
+                cx.stop_propagation();
+                focus_cb_zoom(pane_id, window, cx);
+                toggle_zoom_cb(pane_id, window, cx);
+            })
+            .child(
+                svg()
+                    .path(if is_zoomed {
+                        "phosphor/frame-corners.svg"
+                    } else {
+                        "phosphor/corners-out.svg"
+                    })
+                    .size(crate::ui_scale::ui_icon_px(theme, 12.0))
+                    .text_color(button_color),
+            );
+            let close = action(
+                ElementId::Name(format!("pane-close-{pane_id}").into()),
+                "Close pane".into(),
+            )
+            .debug_selector(|| "editor-pane-close".into())
+            .on_click(move |_event, window, cx| {
+                cx.stop_propagation();
+                focus_pane_cb(pane_id, window, cx);
+                close_pane_cb(pane_id, window, cx);
+            })
+            .child(
+                svg()
+                    .path("phosphor/x.svg")
+                    .size(crate::ui_scale::ui_icon_px(theme, 12.0))
+                    .text_color(button_color),
+            );
             bar = bar.child(zoom).child(close);
         }
 
@@ -2924,9 +2937,32 @@ impl PaneTree {
 
             let mut col = div()
                 .id(ElementId::Name(format!("editor-pane-{pane_id}").into()))
+                .debug_selector(|| "editor-pane-card".into())
                 .flex()
                 .flex_col()
                 .size_full()
+                .min_w_0()
+                .min_h_0()
+                .overflow_hidden()
+                .map(|col| {
+                    #[cfg(target_os = "macos")]
+                    {
+                        let (_, radius) = crate::workspace::frame::pane_card_geometry(
+                            tree_has_splits,
+                            _canvas_depth,
+                        );
+                        col.relative().child(crate::workspace::frame::card_material(
+                            radius,
+                            cx.theme().background,
+                            cx.theme().foreground,
+                            cx.theme().is_dark(),
+                        ))
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        col
+                    }
+                })
                 .on_mouse_down(MouseButton::Left, move |_event, window, cx| {
                     focus_cb_click(pane_id, window, cx);
                 })
@@ -2973,6 +3009,21 @@ impl PaneTree {
                     .overflow_hidden()
                     .child(view.clone()),
             );
+            #[cfg(target_os = "macos")]
+            {
+                let (inset, _) =
+                    crate::workspace::frame::pane_card_geometry(tree_has_splits, _canvas_depth);
+                return div()
+                    .relative()
+                    .size_full()
+                    .p(px(inset))
+                    // A flat chrome backing followed by one rounded GPUI quad.
+                    // Native cutouts here would antialias the same curve twice.
+                    .bg(_surround_color)
+                    .child(col)
+                    .into_any_element();
+            }
+            #[cfg(not(target_os = "macos"))]
             return col.into_any_element();
         }
 
@@ -4082,6 +4133,75 @@ mod tests {
         });
     }
 
+    #[cfg(target_os = "macos")]
+    #[gpui::test]
+    fn editor_pane_card_tracks_terminal_geometry_and_keeps_controls_inside(
+        cx: &mut gpui::TestAppContext,
+    ) {
+        struct Fixture {
+            tree: PaneTree,
+            depth: f32,
+        }
+        impl Render for Fixture {
+            fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+                div().size_full().child(self.tree.render(
+                    1,
+                    |_, _, _, _| {},
+                    |_, _, _| {},
+                    |_, _, _| {},
+                    |_, _, _| {},
+                    |_, _, _| {},
+                    |_, _, _| {},
+                    |_, _, _| {},
+                    None,
+                    cx.theme().title_bar,
+                    cx.theme().background,
+                    None,
+                    0.08,
+                    false,
+                    self.depth,
+                    cx,
+                ))
+            }
+        }
+        cx.update(gpui_component::init);
+        let editor = cx.new(|cx| EditorView::new_with_font_size(14.0, cx));
+        let (root, cx) = cx.add_window_view(|_, _| Fixture {
+            tree: PaneTree::new_editor(editor.clone()),
+            depth: 1.0,
+        });
+        cx.simulate_resize(size(px(400.0), px(300.0)));
+        // Empty and populated panes share the same card; closing the last
+        // file must not remove its frame or leave an old square background.
+        for populated in [false, true, false] {
+            editor.update(cx, |editor, cx| {
+                if populated {
+                    editor.open_file("example.png".into(), cx);
+                } else if editor.tab_count() > 0 {
+                    editor.close_tab(0, cx);
+                }
+            });
+            for depth in [0.0, 0.5, 1.0] {
+                root.update(cx, |root, cx| {
+                    root.depth = depth;
+                    cx.notify();
+                });
+                let card = cx.debug_bounds("editor-pane-card").unwrap();
+                let inset = crate::workspace::frame::pane_card_geometry(false, depth).0;
+                assert_eq!(card.origin, point(px(inset), px(inset)));
+                assert_eq!(
+                    card.size,
+                    size(px(400.0 - 2.0 * inset), px(300.0 - 2.0 * inset))
+                );
+                if populated {
+                    let bar = cx.debug_bounds("editor-merged-bar").unwrap();
+                    assert_eq!(bar.top(), card.top());
+                    assert_eq!(bar.size.width, card.size.width);
+                }
+            }
+        }
+    }
+
     struct EditorBarTestView(Entity<EditorView>, bool);
 
     impl Render for EditorBarTestView {
@@ -4102,6 +4222,37 @@ mod tests {
                 cx,
             ))
         }
+    }
+
+    #[gpui::test]
+    fn editor_controls_keep_file_focus_without_starting_pane_drags(cx: &mut gpui::TestAppContext) {
+        cx.update(gpui_component::init);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("notes.md");
+        std::fs::write(&path, "# Notes\n\nReview this file.").unwrap();
+        let editor = cx.new(|cx| EditorView::new_with_font_size(14.0, cx));
+        editor.update(cx, |editor, cx| {
+            editor.open_file(dir.path().join("image.png"), cx);
+            editor.open_file(path.clone(), cx);
+        });
+        cx.run_until_parked();
+        let (_, cx) = cx.add_window_view(|_, _| EditorBarTestView(editor.clone(), false));
+        let toggle = cx.debug_bounds("editor-preview-toggle").unwrap();
+        cx.simulate_click(toggle.center(), Modifiers::default());
+        cx.update(|window, cx| {
+            assert!(editor.read(cx).preview_active());
+            assert!(editor.read(cx).focus_handle(cx).is_focused(window));
+            assert!(!cx.has_active_drag());
+        });
+        let close = cx.debug_bounds("editor-file-close-1").unwrap();
+        cx.simulate_click(close.center(), Modifiers::default());
+        editor.read_with(cx, |editor, _| {
+            assert_eq!(editor.tab_count(), 1);
+            assert_eq!(
+                editor.active_path(),
+                Some(dir.path().join("image.png").as_path())
+            );
+        });
     }
 
     #[gpui::test]
