@@ -387,6 +387,27 @@ pub(super) fn input_reveal_clip(height: f32, progress: f32, depth: f32) -> gpui:
         .overflow_hidden()
 }
 
+/// Keep the input's fill, contour and content in the same reveal layer.
+pub(super) fn input_card(
+    width: f32,
+    height: f32,
+    depth: f32,
+    color: Hsla,
+    foreground: Hsla,
+    dark: bool,
+) -> gpui::Div {
+    use gpui::ParentElement;
+    let (left, width) = input_island_geometry(width, depth);
+    gpui::div()
+        .absolute()
+        .bottom_0()
+        .left(px((left - CANVAS_INSET * depth).max(0.0)))
+        .w(px(width))
+        .h(px(height))
+        .overflow_hidden()
+        .child(card_material(INPUT_RADIUS * depth, color, foreground, dark))
+}
+
 #[derive(Default)]
 pub(super) struct CanvasSurround {
     cache: Rc<RefCell<Option<SurroundGeometry>>>,
@@ -1145,36 +1166,51 @@ mod tests {
         };
         struct Reveal {
             progress: f32,
+            depth: f32,
         }
         impl Render for Reveal {
             fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
                 div().relative().w_full().h(px(64.0)).child(
-                    input_reveal_clip(44.0, self.progress, 1.0)
+                    input_reveal_clip(44.0, self.progress, self.depth)
                         .debug_selector(|| "input-reveal-clip".into())
                         .child(
-                            div()
-                                .absolute()
-                                .bottom_0()
-                                .left(px(10.0))
-                                .w(px(300.0))
-                                .h(px(44.0))
-                                .debug_selector(|| "fixed-composer".into()),
+                            input_card(
+                                320.0,
+                                44.0,
+                                self.depth,
+                                gpui::black().opacity(0.6),
+                                gpui::white(),
+                                true,
+                            )
+                            .debug_selector(|| "fixed-composer".into())
+                            .child(gpui::div().size_full()),
                         ),
                 )
             }
         }
-        let (view, cx) = cx.add_window_view(|_, _| Reveal { progress: 1.0 });
+        let (view, cx) = cx.add_window_view(|_, _| Reveal {
+            progress: 1.0,
+            depth: 1.0,
+        });
         cx.simulate_resize(size(px(500.0), px(300.0)));
-        let fixed = cx.debug_bounds("fixed-composer").unwrap();
-        for progress in [0.25, 0.7, 0.4, 1.0] {
+        for depth in [0.0, 0.5, 1.0] {
             view.update(cx, |view, cx| {
-                view.progress = progress;
+                view.depth = depth;
                 cx.notify();
             });
-            assert_eq!(cx.debug_bounds("fixed-composer").unwrap(), fixed);
-            let clip = cx.debug_bounds("input-reveal-clip").unwrap();
-            assert_eq!(clip.bottom(), px(62.0));
-            assert_eq!(clip.size.height, px(44.0));
+            let fixed = cx.debug_bounds("fixed-composer").unwrap();
+            assert_eq!(fixed.left(), px(PANE_INSET * depth));
+            assert_eq!(fixed.size.width, px(320.0 - 2.0 * CARD_OUTER_INSET * depth));
+            for progress in [0.25, 0.7, 0.4, 1.0] {
+                view.update(cx, |view, cx| {
+                    view.progress = progress;
+                    cx.notify();
+                });
+                assert_eq!(cx.debug_bounds("fixed-composer").unwrap(), fixed);
+                let clip = cx.debug_bounds("input-reveal-clip").unwrap();
+                assert_eq!(clip.bottom(), px(64.0 - INPUT_BOTTOM_INSET * depth));
+                assert_eq!(clip.size.height, px(44.0));
+            }
         }
     }
 

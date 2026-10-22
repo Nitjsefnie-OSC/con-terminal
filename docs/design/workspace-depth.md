@@ -13,6 +13,16 @@ from AppKit, less the card's clearance from both window edges, and never below
 8pt. Other corners keep 8pt. Fullscreen windows have no corner to follow. The
 radius is derived from painted bounds, so it settles back to 8pt as an adjacent
 sidebar opens rather than switching on a layout flag.
+
+GPUI editor cards and the bottom input tray share `card_material`: one quad
+owns both the rounded fill and its one-physical-pixel contour. Do not combine
+this with native `PaneSurround` cutouts or a separately antialiased outline.
+The editor uses one flat chrome backing outside that quad. The input keeps
+its existing translucent fill and reservation; its fill, edge and content
+live under the same reveal opacity, so the edge cannot appear ahead of the
+surface or lag behind it. Native terminal masks and their complementary
+coverage remain separate and unchanged.
+
 Horizontal tabs already include bottom clearance inside their fixed-height row.
 Subtract that clearance from the canvas's top margin as the strip appears, so
 the visible tab-to-pane gap matches the 5pt lateral outer inset. The macOS

@@ -27,6 +27,11 @@ the header, empty state, root and status row do not repaint square backgrounds.
 The body remains between the header and status row. Native terminal clipping,
 glass, presentation synchronization and Windows/Linux fills are unchanged.
 
+The bottom input tray now uses the same single-quad material. Its fill and
+edge previously lived in separate branches, with independently multiplied
+reveal/depth opacity. Both now fade inside the existing reveal container,
+with unchanged terminal reservation, input focus and view-cache lifetime.
+
 ## Lessons
 
 Pane-level appearance belongs to the workspace renderer, not the kind of file
@@ -37,8 +42,14 @@ depths when testing a new pane content type.
 
 ## Verification
 
+- Final macOS linked app suite: 682 passed; focused editor suite: 149 passed;
+  frame/material suite: 22 passed. All 27 live `con-test` cases passed.
+- Strict binary Clippy, Rust formatting, diff checks and docs manifest passed.
 - Added a rendered geometry regression covering empty/populated/closed file
   states at canvas depths 0, 0.5 and 1, plus component-control focus and
   single-quad material tests at 1x, 1.5x and 2x.
+- Independently configured macOS light/dark previews exercised text, image,
+  Markdown, file-tab controls, pane zoom and input hide/show. No user settings
+  or production sessions were used for these checks.
 - No Windows/Linux hardware was available. Their fills remain cfg-isolated;
   these macOS checks do not establish native Windows/Linux acceptance.

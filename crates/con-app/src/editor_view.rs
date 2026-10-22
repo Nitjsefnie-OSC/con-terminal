@@ -2007,6 +2007,8 @@ impl Render for EditorView {
         let dirty_close_blocked = self.dirty_close_blocked_tab == Some(active_index);
         let mut status_bar = div()
             .h((crate::ui_scale::ui_px(&theme, 14.0) + px(8.0)).max(px(22.0)))
+            .not_italic()
+            .font_weight(FontWeight::NORMAL)
             .flex_shrink_0()
             .flex()
             .items_center()

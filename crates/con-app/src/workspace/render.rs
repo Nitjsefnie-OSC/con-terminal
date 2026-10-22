@@ -915,7 +915,6 @@ impl Render for ConWorkspace {
             #[cfg(target_os = "macos")]
             {
                 let width = (window_width - left_panel_width - agent_panel_outer_width).max(0.0);
-                let (island_left, island_width) = frame::input_island_geometry(width, canvas_depth);
                 let island = theme
                     .title_bar
                     .blend(if theme.is_dark() {
@@ -959,32 +958,16 @@ impl Render for ConWorkspace {
                             canvas_depth,
                         )
                         .child(
-                            div()
-                                .absolute()
-                                .bottom_0()
-                                .left(px(
-                                    (island_left - frame::CANVAS_INSET * canvas_depth).max(0.0)
-                                ))
-                                .w(px(island_width))
-                                .h(px(full_input_bar_height))
-                                .overflow_hidden()
-                                .child(frame::card_fill(frame::INPUT_RADIUS * canvas_depth, island))
-                                .child(input),
+                            frame::input_card(
+                                width,
+                                full_input_bar_height,
+                                canvas_depth,
+                                island,
+                                theme.foreground,
+                                theme.is_dark(),
+                            )
+                            .child(input),
                         ),
-                    )
-                    .child(
-                        frame::card_edge(
-                            frame::INPUT_RADIUS * canvas_depth,
-                            theme.foreground,
-                            theme.is_dark(),
-                        )
-                        .bottom(px(frame::INPUT_BOTTOM_INSET * canvas_depth))
-                        .left(px(
-                            (island_left - frame::CANVAS_INSET * canvas_depth).max(0.0)
-                        ))
-                        .w(px(island_width))
-                        .h(px(full_input_bar_height))
-                        .opacity(input_bar_progress * canvas_depth),
                     );
             }
         }

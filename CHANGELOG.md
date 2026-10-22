@@ -4,6 +4,26 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
+## `v0.1.0-beta.148`
+
+### Changed
+
+**Files**
+
+- File tabs have clearer selection, file-type icons and compact controls.
+  File names and status information use the UI font, while code stays
+  monospace. The status row separates the file path from cursor or image details.
+  _(PR [#506](https://github.com/nowledge-co/con-terminal/pull/506) by [@wey-gu](https://github.com/wey-gu))_
+
+### Fixed
+
+**macOS**
+
+- File previews and the bottom input bar now share the terminal panes' rounded
+  geometry and fine edge treatment, without overlapping corner fills that
+  could leave a visible rim in dark themes.
+  _(PR [#506](https://github.com/nowledge-co/con-terminal/pull/506) by [@wey-gu](https://github.com/wey-gu))_
+
 ## `v0.1.0-beta.147` - 2026-10-22
 
 ### Changed
