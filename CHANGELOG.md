@@ -4,11 +4,16 @@ All notable changes to con are documented here.
 
 con is still pre-release, so entries may group related beta work while the product shape is stabilizing.
 
-## `v0.1.0-beta.148`
+## `v0.1.0-beta.148` - 2026-10-22
 
 ### Changed
 
 **Files**
+
+- Browsing files reuses one temporary editor tab instead of opening a tab for
+  every selection. Its title is italic; double-click the tab, edit the file or
+  save it to keep it open. Files opened explicitly stay in their own tabs.
+  _(PR [#505](https://github.com/nowledge-co/con-terminal/pull/505) by [@frostming](https://github.com/frostming))_
 
 - File tabs have clearer selection, file-type icons and compact controls.
   File names and status information use the UI font, while code stays
